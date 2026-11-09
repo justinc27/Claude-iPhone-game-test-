@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <title>PC Parts Tycoon</title>
+  <meta name="description" content="Idle tycoon game: run your own PC parts superstore.">
+  <meta name="theme-color" content="#3b1f8f">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="PC Tycoon">
+  <link rel="apple-touch-icon" href="icons/icon-180.png">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="app">
+    <header id="topbar">
+      <button id="settingsBtn" class="icon-btn" aria-label="Settings">⚙️</button>
+      <div class="money-wrap">
+        <div id="storeName">Byte Depot</div>
+        <div id="money"><span class="coin">$</span><span id="moneyVal">0</span></div>
+        <div id="income"><span id="incomeVal">$0</span>/sec</div>
+      </div>
+      <button id="buyModeBtn" class="buy-mode" aria-label="Buy amount">x1</button>
+    </header>
+
+    <main id="screen"></main>
+
+    <nav id="tabs">
+      <button data-tab="store" class="tab active"><span>🛒</span>Store<i class="dot"></i></button>
+      <button data-tab="managers" class="tab"><span>👔</span>Managers<i class="dot"></i></button>
+      <button data-tab="upgrades" class="tab"><span>🚀</span>Upgrades<i class="dot"></i></button>
+      <button data-tab="franchise" class="tab"><span>⭐</span>Franchise<i class="dot"></i></button>
+    </nav>
+  </div>
+
+  <div id="modal" class="modal hidden"><div class="modal-card" id="modalCard"></div></div>
+  <div id="toasts"></div>
+  <div id="fx"></div>
+
+  <script src="game.js"></script>
+</body>
+</html>
