@@ -20,9 +20,9 @@ You play a store clerk on the shop floor. **Drag anywhere on the screen** to wal
 | 🛠️ Service Station | $10,000 | $400 per build |
 
 - **Service Station:** some customers want a custom PC. Stand on the pink circle in front of the bench to assemble it, then they pay you.
-- **Upgrades (⬆️ button):** level up a section to raise its item price (x2 at levels 10, 25, 50 and 100, and bigger shelves). Hire staff: a **cashier** runs the register, a **stocker** refills shelves, and a **tech** builds PCs.
+- **Upgrades (⬆️ button):** level up a section to raise its item price (x2 at levels 10, 25, 50 and 100, and bigger shelves). Hire staff: a **cashier** runs Lane 2, a **second cashier** ($3,000, after the first) runs Lane 1, a **stocker** refills shelves, and a **tech** builds PCs.
 - **Staff upgrades:** once someone is hired, the Upgrades menu lists their upgrades under their name: **Faster Scanning** (cashier), **Stocker Shoes** (stocker walks and handles boxes faster), **Hand Truck** (stocker carries 2 more boxes per level, up to 16), and **Power Tools** (tech builds faster).
-- **Hiring on the floor:** the blue **HIRE CASHIER** pad (beside the checkout) and **HIRE STOCKER** pad (in the stockroom) work like unlock pads: stand on one and your cash pays for the hire. If you pay part on the floor, the Upgrades menu only charges the rest. You can also buy faster shoes and a bigger carrying stack.
+- **Hiring on the floor:** the blue **HIRE CASHIER** pad (beside the checkout; it turns into **HIRE CASHIER 2** once the first cashier is hired) and **HIRE STOCKER** pad (in the stockroom) work like unlock pads: stand on one and your cash pays for the hire. If you pay part on the floor, the Upgrades menu only charges the rest. You can also buy faster shoes and a bigger carrying stack.
 - A yellow arrow and hint point to what to do next while you're learning.
 - Progress saves automatically. With a cashier and a stocker hired, the store keeps earning while the app is closed (up to 2 hours).
 

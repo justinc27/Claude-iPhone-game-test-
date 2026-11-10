@@ -59,7 +59,8 @@ const REG_RADIUS = 30;
 
 // ---------- Staff & player upgrades ----------
 const STAFF = {
-  cashier: { name: 'Cashier Cass', icon: '🧑‍💼', cost: 500, desc: 'Checks out customers at the register' },
+  cashier: { name: 'Cashier Cass', icon: '🧑‍💼', cost: 500, desc: 'Runs checkout Lane 2' },
+  cashier2: { name: 'Cashier Cody', icon: '👨‍💼', cost: 3000, desc: 'Runs checkout Lane 1, so you can keep restocking' },
   stocker: { name: 'Stocker Stan', icon: '🧑‍🔧', cost: 1500, desc: 'Carries stock to empty shelves' },
   tech: { name: 'Tech Tara', icon: '👩‍💻', cost: 8000, desc: 'Assembles PCs at the Service Station' },
 };
@@ -67,7 +68,7 @@ const MAX_PLAYER_LV = 8;
 // Upgrades for hired staff
 const STAFF_UPGRADES = [
   { id: 'cashierSpeed', staff: 'cashier', icon: '⚡', title: 'Faster Scanning', base: 400, growth: 1.9, max: 8,
-    desc: () => `Scans an item every ${cashierScanTime().toFixed(2)}s` },
+    desc: () => `Both cashiers scan an item every ${cashierScanTime().toFixed(2)}s` },
   { id: 'stockerSpeed', staff: 'stocker', icon: '👟', title: 'Stocker Shoes', base: 600, growth: 1.9, max: 8,
     desc: () => `Walks ${Math.round(stockerSpeed() / 125 * 100)}% speed` },
   { id: 'stockerCarry', staff: 'stocker', icon: '📦', title: 'Hand Truck', base: 800, growth: 2, max: 6,
@@ -86,6 +87,7 @@ function techBuildTime() { return 8 * Math.pow(0.85, staffLv('techSpeed')); }
 // Floor pads where you hire staff by standing on them
 const HIRE_PADS = {
   cashier: { x: 222, y: 900, label: 'CASHIER' },
+  cashier2: { x: 222, y: 900, label: 'CASHIER 2' },
   stocker: { x: 530, y: 90, label: 'STOCKER' },
 };
 
@@ -98,8 +100,8 @@ function freshState(keep = {}) {
     storeName: keep.storeName || 'Byte Depot',
     sound: keep.sound !== undefined ? keep.sound : true,
     sec, speedLv: 0, carryLv: 0,
-    staff: { cashier: false, stocker: false, tech: false },
-    staffPaid: { cashier: 0, stocker: 0 },
+    staff: { cashier: false, cashier2: false, stocker: false, tech: false },
+    staffPaid: { cashier: 0, cashier2: 0, stocker: 0 },
     staffLv: {},
     player: { x: 300, y: 640 },
     carry: [],
@@ -362,7 +364,7 @@ function leave(c, mood) {
 }
 function joinQueue(c) {
   let lane = 0;
-  if (state.staff.cashier) lane = queues[1].length <= queues[0].length ? 1 : 0;
+  if (state.staff.cashier) lane = queues[1].length <= queues[0].length ? 1 : 0;   // shortest open line
   c.state = 'queue';
   c.lane = lane;
   queues[lane].push(c);
@@ -415,11 +417,12 @@ function updateCustomer(c, dt) {
 function laneServer(l) {
   if (dist(state.player, REG[l]) < REG_RADIUS) return 0.28;
   if (l === 1 && state.staff.cashier) return cashierScanTime();
+  if (l === 0 && state.staff.cashier2) return cashierScanTime();
   return 0;
 }
 function updateRegister(dt) {
   // If you walk away from lane 1, waiting shoppers move to the cashier's lane
-  if (state.staff.cashier && dist(state.player, REG[0]) >= REG_RADIUS) awayFromLane1 += dt; else awayFromLane1 = 0;
+  if (state.staff.cashier && !state.staff.cashier2 && dist(state.player, REG[0]) >= REG_RADIUS) awayFromLane1 += dt; else awayFromLane1 = 0;
   if (awayFromLane1 > 2.5) {
     const moving = queues[0].filter(c => c.scanned === 0);
     queues[0] = queues[0].filter(c => c.scanned > 0);
@@ -510,7 +513,7 @@ function updatePlayer(dt) {
   }
   // Hire pads: money flows in while you stand on them
   for (const k in HIRE_PADS) {
-    if (state.staff[k]) continue;
+    if (state.staff[k] || !staffAvailable(k)) continue;
     const pad = HIRE_PADS[k], cost = STAFF[k].cost;
     if (inRect(p, padRect(pad)) && state.money > 0) {
       const amt = Math.min(state.money, cost - state.staffPaid[k], Math.max(25, cost / 1.6) * dt);
@@ -562,6 +565,7 @@ function unlockSection(id) {
 
 // ---------- Staff NPCs ----------
 function ensureNpcs() {
+  if (state.staff.cashier2 && !npcs.cashier2) npcs.cashier2 = { x: REG[0].x + 8, y: REG[0].y, path: [], speed: 0, shirt: '#118ab2', skin: '#8d5524', hair: '#2b1d0e', cap: '#ffc83d', face: 1 };
   if (state.staff.cashier && !npcs.cashier) npcs.cashier = { x: REG[1].x + 8, y: REG[1].y, path: [], speed: 0, shirt: '#2b2350', skin: '#e0ac69', hair: '#111', cap: '#ffc83d', face: 1 };
   if (state.staff.tech && !npcs.tech) npcs.tech = { x: SEC.svc.bench.x + SEC.svc.bench.w + 22, y: SEC.svc.bench.y + 30, path: [], speed: 0, shirt: '#ff6b9a', skin: '#c68642', hair: '#2b1d0e', cap: '#2b2350', face: 1 };
   if (state.staff.stocker && !npcs.stocker) npcs.stocker = { x: 300, y: 178, path: [], speed: 125, shirt: '#06d6a0', skin: '#f5d0a9', hair: '#b5542b', cap: '#2b2350', carry: [], job: 'idle', timer: 0, face: 1 };
@@ -801,7 +805,7 @@ function drawCheckout() {
   for (let l = 0; l < 2; l++) {
     const r = COUNTERS[l], reg = REG[l];
     const here = dist(state.player, reg) < REG_RADIUS;
-    const staffed = l === 1 && state.staff.cashier;
+    const staffed = (l === 1 && state.staff.cashier) || (l === 0 && state.staff.cashier2);
     // register spot
     ctx.beginPath(); ctx.arc(reg.x, reg.y, 24, 0, Math.PI * 2);
     ctx.fillStyle = here ? 'rgba(46,204,113,.45)' : 'rgba(255,200,61,.45)'; ctx.fill();
@@ -875,7 +879,7 @@ function drawUnlockPads() {
 
 function drawHirePads() {
   for (const k in HIRE_PADS) {
-    if (state.staff[k]) continue;
+    if (state.staff[k] || !staffAvailable(k)) continue;
     const pad = HIRE_PADS[k], r = padRect(pad), cost = STAFF[k].cost;
     const pct = state.staffPaid[k] / cost;
     rr(r.x, r.y + 5, r.w, r.h, 12); ctx.fillStyle = '#1f6fb2'; ctx.fill();
@@ -967,14 +971,14 @@ function objective() {
     const s = SEC[carried];
     if (state.sec[carried].stock < shelfCap(carried)) return { pt: s.stockSpot, text: `Put the ${s.items} on the ${s.name} shelf` };
   }
-  if (queues[0].length && !state.staff.cashier) return atReg ? { pt: REG[0], text: 'Stay here to check out the line' } : { pt: REG[0], text: 'Go to the register to check out customers' };
+  if (queues[0].length && !state.staff.cashier && !state.staff.cashier2) return atReg ? { pt: REG[0], text: 'Stay here to check out the line' } : { pt: REG[0], text: 'Go to the register to check out customers' };
   const svcWaiting = customers.some(c => c.state === 'svc' && !c.path.length);
   if (svcWaiting && !state.staff.tech && dist(p, SEC.svc.workPad) > 34) return { pt: SEC.svc.workPad, text: 'A customer wants a custom PC. Go build it!' };
   const next = SECTIONS.find(s => !state.sec[s.id].unlocked);
   if (next && state.money >= next.unlock - state.sec[next.id].paid) return { pt: next.pad, text: `Stand on the pad to unlock ${next.name}` };
   for (const k in HIRE_PADS) {
-    if (!state.staff[k] && state.money >= staffRemaining(k) && !inRect(p, padRect(HIRE_PADS[k])))
-      return { pt: HIRE_PADS[k], text: `Stand on the pad to hire a ${HIRE_PADS[k].label.toLowerCase()}` };
+    if (!state.staff[k] && staffAvailable(k) && state.money >= staffRemaining(k) && !inRect(p, padRect(HIRE_PADS[k])))
+      return { pt: HIRE_PADS[k], text: k === 'cashier2' ? 'Stand on the pad to hire a second cashier' : `Stand on the pad to hire a ${HIRE_PADS[k].label.toLowerCase()}` };
   }
   const low = unlockedParts().find(s => state.sec[s.id].stock === 0) || (state.carry.length === 0 && unlockedParts().find(s => state.sec[s.id].stock < 2));
   if (low && state.carry.length < carryCap()) return { pt: low.crate, text: `Grab ${low.items} from the stockroom` };
@@ -1070,7 +1074,11 @@ function anyAffordable() {
   return false;
 }
 function staffRemaining(k) { return STAFF[k].cost - (state.staffPaid[k] || 0); }
-function staffAvailable(k) { return k !== 'tech' || state.sec.svc.unlocked; }
+function staffAvailable(k) {
+  if (k === 'tech') return state.sec.svc.unlocked;
+  if (k === 'cashier2') return state.staff.cashier;
+  return true;
+}
 function showUpgrades() {
   let html = `<div class="sheet-head"><h2>Upgrades</h2><button class="icon-btn small" data-act="close" aria-label="Close">✕</button></div>`;
   html += `<div class="group">Sections <span>Level up to raise prices</span></div>`;
@@ -1094,7 +1102,7 @@ function showUpgrades() {
     const s = STAFF[k];
     const avail = staffAvailable(k);
     html += `<div class="item ${state.staff[k] ? 'done' : ''}"><div class="avatar" style="--c:#ece8fb">${s.icon}</div>
-      <div class="info"><div class="title">${s.name}</div><div class="desc">${avail ? s.desc + (HIRE_PADS[k] && !state.staff[k] ? ' · or hire on the store floor' : '') : 'Unlock the Service Station first'}</div></div>
+      <div class="info"><div class="title">${s.name}</div><div class="desc">${avail ? s.desc + (HIRE_PADS[k] && !state.staff[k] ? ' · or hire on the store floor' : '') : k === 'cashier2' ? 'Hire Cashier Cass first' : 'Unlock the Service Station first'}</div></div>
       ${state.staff[k] ? '<button class="btn owned" disabled>Hired ✓</button>'
         : avail ? `<button class="btn green" data-act="hire" data-id="${k}" data-cost="${staffRemaining(k)}">Hire<small>${money$(staffRemaining(k))}</small></button>` : ''}</div>`;
     if (state.staff[k]) for (const u of STAFF_UPGRADES.filter(x => x.staff === k)) {
