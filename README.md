@@ -6,8 +6,9 @@ A store tycoon game for iPhone. You run a PC parts store as a character on the s
 
 You play a store clerk on the shop floor. **Drag anywhere on the screen** to walk; your character moves in the direction you drag. On a computer, the arrow keys or WASD also work.
 
+- **The store (Racetrack Loop layout):** stockroom across the top, Service Station below it, Accessories and PC Cases on the side walls, Monitors and Graphics Cards back to back on a center island. Shoppers walk a one-way loop from the entrance (bottom-left) around the island to a 2-lane checkout, then out the exit (bottom-right).
 - **Restock shelves.** Walk onto a crate in the **stockroom** (top of the store) to pick up boxes. Walk next to the matching shelf to stock it. Shoppers can't buy from an empty shelf, and they leave unhappy if they wait too long.
-- **Check people out.** Shoppers roam the aisles for the items in their thought bubble, then line up at the **checkout**. Stand on the yellow circle behind the counter to scan their items and get paid.
+- **Check people out.** Shoppers stop at the shelves for the items in their thought bubble, then line up at the **checkout**. Stand on the yellow circle next to a counter to scan their items and get paid. Lane 1 is yours; once you hire a cashier they run Lane 2, and if you walk away from Lane 1 the people waiting there move to the cashier's lane.
 - **Unlock new sections.** Stand on a yellow **UNLOCK** pad and your cash flows into it.
 
 | Section | Unlock price | Starting item price |

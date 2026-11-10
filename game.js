@@ -8,38 +8,48 @@
 
 const SAVE_KEY = 'pcPartsTycoon_store_v2';
 const W = 600, H = 1020;             // world size in world units
-const AISLE_X = 300;                 // central aisle shoppers walk along
-const DOOR = { x: 300, y: 1000 };
 const VIEW_UNITS = 610;              // how many world units fit across the screen
 const MILESTONES = [10, 25, 50, 100];
 
-// ---------- Store layout & sections ----------
+// ---------- Store layout ("Racetrack Loop") ----------
+// Stockroom across the top, wall shelves left & right, a center island with
+// two back-to-back shelves, and a one-way loop: in bottom-left, out bottom-right.
 const SECTIONS = [
   { id: 'acc', name: 'Accessories', item: 'Mouse', items: 'mice', icon: '🖱️', color: '#4fb3ff', price: 8, unlock: 0,
-    shelf: { x: 40, y: 220, w: 190, h: 42 }, crate: { x: 85, y: 95 } },
+    shelf: { x: 26, y: 270, w: 40, h: 330 }, crate: { x: 90, y: 90 }, stockSpot: { x: 94, y: 435 }, pad: { x: 120, y: 435 } },
   { id: 'case', name: 'PC Cases', item: 'PC Case', items: 'PC cases', icon: '🗄️', color: '#a77bff', price: 25, unlock: 120,
-    shelf: { x: 370, y: 220, w: 190, h: 42 }, crate: { x: 405, y: 95 } },
+    shelf: { x: 534, y: 270, w: 40, h: 330 }, crate: { x: 205, y: 90 }, stockSpot: { x: 506, y: 435 }, pad: { x: 478, y: 435 } },
   { id: 'mon', name: 'Monitors', item: 'Monitor', items: 'monitors', icon: '🖥️', color: '#2ecc8f', price: 60, unlock: 600,
-    shelf: { x: 40, y: 380, w: 190, h: 42 }, crate: { x: 195, y: 95 } },
+    shelf: { x: 200, y: 360, w: 200, h: 42 }, crate: { x: 320, y: 90 }, stockSpot: { x: 300, y: 336 }, pad: { x: 300, y: 330 } },
   { id: 'gpu', name: 'Graphics Cards', item: 'GPU', items: 'GPUs', icon: '🎮', color: '#ff9f43', price: 140, unlock: 2500,
-    shelf: { x: 370, y: 380, w: 190, h: 42 }, crate: { x: 515, y: 95 } },
+    shelf: { x: 200, y: 450, w: 200, h: 42 }, crate: { x: 435, y: 90 }, stockSpot: { x: 300, y: 522 }, pad: { x: 300, y: 530 } },
   { id: 'svc', name: 'Service Station', item: 'Custom PC', items: 'custom PCs', icon: '🛠️', color: '#ff6b9a', price: 400, unlock: 10000,
-    bench: { x: 370, y: 545, w: 190, h: 40 } },
+    bench: { x: 210, y: 200, w: 180, h: 40 }, pad: { x: 300, y: 272 } },
 ];
 const SEC = Object.fromEntries(SECTIONS.map(s => [s.id, s]));
 const PARTS = SECTIONS.filter(s => s.shelf);
-for (const s of PARTS) s.front = { x: s.shelf.x + s.shelf.w / 2, y: s.shelf.y + s.shelf.h + 28 };
-SEC.svc.front = { x: 465, y: 618 };            // unlock pad
-SEC.svc.custSpot = { x: 525, y: 615 };          // where the build customer waits
-SEC.svc.workPad = { x: 410, y: 618 };           // where you stand to assemble
-const COUNTER = { x: 40, y: 690, w: 160, h: 40 };
-const REGISTER = { x: 120, y: 662 };            // stand here to check people out
+SEC.svc.custSpot = { x: 348, y: 272 };          // where the build customer waits
+SEC.svc.workPad = { x: 252, y: 274 };           // where you stand to assemble
+const STOCKROOM_H = 140;                        // stockroom band: y 16..156
 const CRATE_W = 84, CRATE_H = 64;
 
-function queueSlot(i) {
-  const col = Math.floor(i / 5), row = i % 5;
-  return { x: 120 + col * 50, y: 768 + row * 46 };
+// One-way shopper loop: entrance → up the left side → across the top → down the right side
+const LOOP = [{ x: 105, y: 1000 }, { x: 130, y: 680 }, { x: 130, y: 300 }, { x: 470, y: 300 }, { x: 470, y: 700 }];
+const LOOP_CUM = [0];
+for (let i = 1; i < LOOP.length; i++) LOOP_CUM.push(LOOP_CUM[i - 1] + Math.hypot(LOOP[i].x - LOOP[i - 1].x, LOOP[i].y - LOOP[i - 1].y));
+const S_END = LOOP_CUM[LOOP_CUM.length - 1];
+const ENTRANCE = { x: 40, w: 130 }, EXIT = { x: 430, w: 130 };
+const EXIT_PATH = [{ x: 540, y: 720 }, { x: 540, y: 960 }, { x: 495, y: H + 30 }];
+
+// Two checkout lanes. Shoppers line up on the left of each counter; the clerk stands on the right.
+const COUNTERS = [{ x: 300, y: 770, w: 36, h: 90 }, { x: 440, y: 770, w: 36, h: 90 }];
+const REG = [{ x: 362, y: 815 }, { x: 502, y: 815 }];   // stand here to check people out
+const LANE_X = [278, 418];
+function queueSlot(lane, i) {
+  const col = Math.floor(i / 6), row = i % 6;
+  return { x: LANE_X[lane] - col * 40, y: 815 - row * 44 };
 }
+const REG_RADIUS = 30;
 
 // ---------- Staff & player upgrades ----------
 const STAFF = {
@@ -69,8 +79,8 @@ function stockerCarry() { return 4 + 2 * staffLv('stockerCarry'); }
 function techBuildTime() { return 8 * Math.pow(0.85, staffLv('techSpeed')); }
 // Floor pads where you hire staff by standing on them
 const HIRE_PADS = {
-  cashier: { x: 268, y: 700, label: 'CASHIER' },
-  stocker: { x: 300, y: 95, label: 'STOCKER' },
+  cashier: { x: 222, y: 900, label: 'CASHIER' },
+  stocker: { x: 530, y: 90, label: 'STOCKER' },
 };
 
 // ---------- State ----------
@@ -85,7 +95,7 @@ function freshState(keep = {}) {
     staff: { cashier: false, stocker: false, tech: false },
     staffPaid: { cashier: 0, stocker: 0 },
     staffLv: {},
-    player: { x: 300, y: 600 },
+    player: { x: 300, y: 640 },
     carry: [],
     rate: 0,
     lastSeen: Date.now(),
@@ -112,13 +122,16 @@ function save() {
 const loaded = load();
 const isNewPlayer = !loaded;
 let state = loaded || freshState();
+if (loaded && [{ x: 300, y: 770, w: 176, h: 90 }, { x: 26, y: 270, w: 548, h: 330 }].some(r => state.player.x > r.x && state.player.x < r.x + r.w && state.player.y > r.y && state.player.y < r.y + r.h)) state.player = { x: 300, y: 640 };
 
 // Runtime-only world objects
 let customers = [];
-let queue = [];
+let queues = [[], []];
+const serveTimers = [0, 0];
+let awayFromLane1 = 0;
 let fx = [];
 let spawnTimer = 2;
-let serveTimer = 0, pickTimer = 0, dropTimer = 0;
+let pickTimer = 0, dropTimer = 0;
 let buildProgress = 0;
 const npcs = {};
 
@@ -190,26 +203,93 @@ function crateRect(s) { return { x: s.crate.x - CRATE_W / 2, y: s.crate.y - CRAT
 function padRect(p, w = 96, h = 56) { return { x: p.x - w / 2, y: p.y - h / 2, w, h }; }
 
 function obstacles() {
-  const list = [COUNTER];
+  const list = [...COUNTERS];
   for (const s of PARTS) if (state.sec[s.id].unlocked) list.push(s.shelf);
   if (state.sec.svc.unlocked) list.push(SEC.svc.bench);
   return list;
 }
+const FURNITURE = [...COUNTERS, SEC.svc.bench, ...PARTS.map(s => s.shelf)];
 // For shoppers & staff: is a straight walk blocked by furniture?
 function segmentBlocked(a, b) {
-  const all = [COUNTER, SEC.svc.bench, ...PARTS.map(s => s.shelf)];
   const steps = Math.ceil(dist(a, b) / 8);
   for (let i = 1; i < steps; i++) {
     const p = { x: a.x + (b.x - a.x) * i / steps, y: a.y + (b.y - a.y) * i / steps };
-    if (all.some(r => inRect(p, r, 10))) return true;
+    if (FURNITURE.some(r => inRect(p, r, 16))) return true;
   }
   return false;
 }
+// Small grid A* so staff can find their way around the furniture
+const CELL = 20, GW = Math.ceil(W / CELL), GH = Math.ceil(H / CELL);
+const blockedCell = new Uint8Array(GW * GH);
+for (let gy = 0; gy < GH; gy++) for (let gx = 0; gx < GW; gx++) {
+  const p = { x: gx * CELL + CELL / 2, y: gy * CELL + CELL / 2 };
+  blockedCell[gy * GW + gx] = (p.x < 30 || p.x > W - 30 || p.y < 30 || FURNITURE.some(r => inRect(p, r, 14))) ? 1 : 0;
+}
+function gridPath(from, to) {
+  const cl = v => Math.max(0, Math.min(v, 1e9));
+  const sx = Math.min(GW - 1, Math.floor(cl(from.x) / CELL)), sy = Math.min(GH - 1, Math.floor(cl(from.y) / CELL));
+  const tx = Math.min(GW - 1, Math.floor(cl(to.x) / CELL)), ty = Math.min(GH - 1, Math.floor(cl(to.y) / CELL));
+  const start = sy * GW + sx, goal = ty * GW + tx;
+  const g = new Float32Array(GW * GH).fill(Infinity), came = new Int32Array(GW * GH).fill(-1), closed = new Uint8Array(GW * GH);
+  g[start] = 0;
+  const open = [start];
+  const h = i => Math.hypot(i % GW - tx, Math.floor(i / GW) - ty);
+  while (open.length) {
+    let bi = 0;
+    for (let i = 1; i < open.length; i++) if (g[open[i]] + h(open[i]) < g[open[bi]] + h(open[bi])) bi = i;
+    const cur = open.splice(bi, 1)[0];
+    if (cur === goal) break;
+    closed[cur] = 1;
+    const cx = cur % GW, cy = Math.floor(cur / GW);
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+      if (!dx && !dy) continue;
+      const nx = cx + dx, ny = cy + dy;
+      if (nx < 0 || ny < 0 || nx >= GW || ny >= GH) continue;
+      const n = ny * GW + nx;
+      if (closed[n] || (blockedCell[n] && n !== goal)) continue;
+      if (dx && dy && (blockedCell[cy * GW + nx] || blockedCell[ny * GW + cx])) continue;
+      const ng = g[cur] + (dx && dy ? 1.414 : 1);
+      if (ng < g[n]) { g[n] = ng; came[n] = cur; if (!open.includes(n)) open.push(n); }
+    }
+  }
+  if (came[goal] === -1 && goal !== start) return [{ x: to.x, y: to.y }];
+  const cells = [];
+  for (let c = goal; c !== -1 && c !== start; c = came[c]) cells.unshift({ x: (c % GW) * CELL + CELL / 2, y: Math.floor(c / GW) * CELL + CELL / 2 });
+  cells[cells.length - 1] = { x: to.x, y: to.y };
+  // String-pull: skip corners that have a clear straight line
+  const out = [];
+  let anchor = from;
+  for (let i = 0; i < cells.length; i++) {
+    if (i === cells.length - 1 || segmentBlocked(anchor, cells[i + 1])) { out.push(cells[i]); anchor = cells[i]; }
+  }
+  return out;
+}
 function route(from, to) {
   if (!segmentBlocked(from, to)) return [{ x: to.x, y: to.y }];
+  return gridPath(from, to);
+}
+// Position along the shopper loop
+function loopS(p) {
+  let best = Infinity, bestS = 0;
+  for (let i = 1; i < LOOP.length; i++) {
+    const a = LOOP[i - 1], b = LOOP[i];
+    const vx = b.x - a.x, vy = b.y - a.y, len2 = vx * vx + vy * vy;
+    const k = Math.max(0, Math.min(1, ((p.x - a.x) * vx + (p.y - a.y) * vy) / len2));
+    const d = Math.hypot(a.x + vx * k - p.x, a.y + vy * k - p.y);
+    if (d < best) { best = d; bestS = LOOP_CUM[i - 1] + k * Math.sqrt(len2); }
+  }
+  return bestS;
+}
+function loopPoint(s) {
+  for (let i = 1; i < LOOP.length; i++) if (s <= LOOP_CUM[i] || i === LOOP.length - 1) {
+    const k = Math.max(0, Math.min(1, (s - LOOP_CUM[i - 1]) / (LOOP_CUM[i] - LOOP_CUM[i - 1])));
+    return { x: LOOP[i - 1].x + (LOOP[i].x - LOOP[i - 1].x) * k, y: LOOP[i - 1].y + (LOOP[i].y - LOOP[i - 1].y) * k };
+  }
+}
+function loopPath(s1, s2) {
   const pts = [];
-  if (Math.abs(from.x - AISLE_X) > 6) pts.push({ x: AISLE_X, y: from.y });
-  pts.push({ x: AISLE_X, y: to.y }, { x: to.x, y: to.y });
+  for (let i = 0; i < LOOP.length; i++) if (LOOP_CUM[i] > s1 + 0.5 && LOOP_CUM[i] < s2 - 0.5) pts.push({ ...LOOP[i] });
+  pts.push(loopPoint(s2));
   return pts;
 }
 function walk(o, dt) {
@@ -227,34 +307,61 @@ function walk(o, dt) {
 const SHIRTS = ['#ff6b6b', '#ffd166', '#06d6a0', '#118ab2', '#ef476f', '#8338ec', '#fb8500', '#3a86ff'];
 const SKINS = ['#f5d0a9', '#e0ac69', '#c68642', '#8d5524', '#ffdbac'];
 const HAIR = ['#2b1d0e', '#6b3e1b', '#e8c170', '#111', '#b5542b', '#999'];
+// Where a shopper steps off the loop to reach a section
+function makeStop(id) {
+  const r = Math.random();
+  let approach, spot;
+  if (id === 'acc') { const y = 290 + r * 290; approach = { x: 130, y }; spot = { x: 94, y }; }
+  else if (id === 'case') { const y = 290 + r * 290; approach = { x: 470, y }; spot = { x: 506, y }; }
+  else if (id === 'mon') { const x = 215 + r * 170; approach = { x, y: 300 }; spot = { x, y: 336 }; }
+  else if (id === 'gpu') { const x = 215 + r * 170; approach = { x: 470, y: 522 }; spot = { x, y: 522 }; }
+  else { approach = { x: SEC.svc.custSpot.x, y: 300 }; spot = { ...SEC.svc.custSpot }; }
+  return { id, approach, spot, s: loopS(approach) };
+}
 function spawnCustomer() {
   const parts = unlockedParts();
-  const svcActive = customers.some(c => c.state === 'svc');
+  const svcActive = customers.some(c => c.build && c.state !== 'leave');
   const wantsBuild = state.sec.svc.unlocked && !svcActive && Math.random() < 0.3;
+  const x = ENTRANCE.x + ENTRANCE.w / 2 + (Math.random() * 30 - 15);
   const c = {
-    x: DOOR.x + (Math.random() * 30 - 15), y: H + 10, path: [], speed: 85 + Math.random() * 30,
+    x, y: H + 10, path: [{ x, y: 990 }], speed: 85 + Math.random() * 30,
     shirt: SHIRTS[Math.floor(Math.random() * SHIRTS.length)],
     skin: SKINS[Math.floor(Math.random() * SKINS.length)],
     hair: HAIR[Math.floor(Math.random() * HAIR.length)],
-    wants: [], cart: [], idx: 0, timer: 0, patience: 14, state: 'shop', goingTo: null, scanned: 0, mood: null, face: 1,
+    wants: [], stops: [], cart: [], idx: 0, going: -1, phase: 'walk', s: 0,
+    timer: 0, patience: 14, state: 'shop', scanned: 0, mood: null, face: 1,
   };
   if (wantsBuild) {
-    c.state = 'svc';
-    c.path = [{ x: c.x, y: DOOR.y - 20 }, ...route({ x: AISLE_X, y: DOOR.y - 20 }, SEC.svc.custSpot)];
-    c.patience = 45;
+    c.build = true;
+    c.stops = [makeStop('svc')];
   } else {
-    const n = 1 + Math.floor(Math.random() * Math.min(3, parts.length + 1));
-    for (let i = 0; i < n; i++) c.wants.push(parts[Math.floor(Math.random() * parts.length)].id);
-    c.path = [{ x: c.x, y: DOOR.y - 20 }];
+    const pool = parts.map(p => p.id).sort(() => Math.random() - 0.5);
+    const n = 1 + Math.floor(Math.random() * Math.min(3, pool.length));
+    c.stops = pool.slice(0, n).map(makeStop).sort((a, b) => a.s - b.s);
   }
+  c.wants = c.stops.map(st => st.id);
   customers.push(c);
 }
 function leave(c, mood) {
+  const wasQueued = c.state === 'queue';
   c.state = 'leave';
   c.mood = mood;
   c.moodT = 0;
-  c.path = [...route(c, { x: AISLE_X, y: DOOR.y - 10 }), { x: AISLE_X + (Math.random() * 20 - 10), y: H + 30 }];
+  if (wasQueued) {
+    c.path = [{ x: c.x, y: 900 }, { x: 495, y: 960 }, { x: 495, y: H + 30 }];
+  } else {
+    // Finish the loop, then head out the exit
+    const back = c.atStop ? [{ ...c.atStop.approach }] : [];
+    c.path = [...back, ...loopPath(c.s, S_END), ...EXIT_PATH.map(p => ({ ...p }))];
+  }
   if (mood === 'sad') sfx.sad();
+}
+function joinQueue(c) {
+  let lane = 0;
+  if (state.staff.cashier) lane = queues[1].length <= queues[0].length ? 1 : 0;
+  c.state = 'queue';
+  c.lane = lane;
+  queues[lane].push(c);
 }
 function updateCustomer(c, dt) {
   c.moving = false;
@@ -263,31 +370,34 @@ function updateCustomer(c, dt) {
   if (!arrived) return;
 
   if (c.state === 'shop') {
-    if (c.idx >= c.wants.length) {
-      if (c.cart.length) { c.state = 'queue'; queue.push(c); }
-      else leave(c, 'sad');
+    if (c.phase === 'browse') {
+      const stop = c.stops[c.idx];
+      if (stop.id === 'svc') { c.state = 'svc'; return; }
+      c.timer += dt;
+      if (c.timer < 0.6) return;
+      const st = state.sec[stop.id];
+      let done = false;
+      if (st.stock > 0) { st.stock--; c.cart.push(stop.id); done = true; c.waiting = false; }
+      else {
+        c.waiting = true;
+        c.patience -= dt;
+        if (c.patience <= 0) { done = true; c.patience = 10; c.waiting = false; }
+      }
+      if (done) { c.path = [{ ...stop.approach }]; c.s = stop.s; c.atStop = null; c.idx++; c.phase = 'walk'; }
       return;
     }
-    const s = SEC[c.wants[c.idx]];
-    const spot = { x: s.front.x + (Math.random() * 120 - 60), y: s.front.y + (Math.random() * 10 - 5) };
-    if (c.goingTo !== c.idx) { c.goingTo = c.idx; c.timer = 0; c.path = route(c, spot); return; }
-    c.timer += dt;
-    if (c.timer < 0.6) return;
-    const st = state.sec[s.id];
-    if (st.stock > 0) {
-      st.stock--;
-      c.cart.push(s.id);
-      c.idx++;
-      c.waiting = false;
-    } else {
-      c.waiting = true;
-      c.patience -= dt;
-      if (c.patience <= 0) { c.idx++; c.patience = 10; c.waiting = false; }
+    if (c.idx < c.stops.length) {
+      const stop = c.stops[c.idx];
+      if (c.going !== c.idx) { c.going = c.idx; c.path = [...loopPath(c.s, stop.s), { ...stop.spot }]; return; }
+      c.phase = 'browse'; c.timer = 0; c.s = stop.s; c.atStop = stop;
+      return;
     }
+    if (!c.toCheckout) { c.toCheckout = true; c.path = loopPath(c.s, S_END); c.s = S_END; return; }
+    if (c.cart.length) joinQueue(c); else leave(c, 'sad');
   } else if (c.state === 'queue') {
-    const i = queue.indexOf(c);
-    const slot = queueSlot(i);
-    if (dist(c, slot) > 2) { c.path = route(c, slot); return; }
+    const q = queues[c.lane];
+    const slot = queueSlot(c.lane, q.indexOf(c));
+    if (dist(c, slot) > 2) c.path = route(c, slot);
   } else if (c.state === 'svc') {
     c.waiting = true;
     c.patience -= dt;
@@ -297,23 +407,35 @@ function updateCustomer(c, dt) {
   }
 }
 
-// Checkout at the register
+// Checkout: lane 1 is yours, lane 2 is the cashier's
+function laneServer(l) {
+  if (dist(state.player, REG[l]) < REG_RADIUS) return 0.28;
+  if (l === 1 && state.staff.cashier) return cashierScanTime();
+  return 0;
+}
 function updateRegister(dt) {
-  const front = queue[0];
-  const playerHere = dist(state.player, REGISTER) < 36;
-  const scanTime = playerHere ? 0.28 : state.staff.cashier ? cashierScanTime() : 0;
-  if (!front || !scanTime || dist(front, queueSlot(0)) > 4) { serveTimer = 0; return; }
-  serveTimer += dt;
-  if (serveTimer >= scanTime) {
-    serveTimer = 0;
+  // If you walk away from lane 1, waiting shoppers move to the cashier's lane
+  if (state.staff.cashier && dist(state.player, REG[0]) >= REG_RADIUS) awayFromLane1 += dt; else awayFromLane1 = 0;
+  if (awayFromLane1 > 2.5) {
+    const moving = queues[0].filter(c => c.scanned === 0);
+    queues[0] = queues[0].filter(c => c.scanned > 0);
+    for (const c of moving) { c.lane = 1; queues[1].push(c); }
+  }
+  for (let l = 0; l < 2; l++) {
+    const front = queues[l][0];
+    const scanTime = laneServer(l);
+    if (!front || !scanTime || dist(front, queueSlot(l, 0)) > 4) { serveTimers[l] = 0; continue; }
+    serveTimers[l] += dt;
+    if (serveTimers[l] < scanTime) continue;
+    serveTimers[l] = 0;
     front.scanned++;
     sfx.scan();
     if (front.scanned >= front.cart.length) {
       const total = front.cart.reduce((sum, id) => sum + price(id), 0);
-      earn(total, REGISTER.x, REGISTER.y - 30);
+      earn(total, REG[l].x, REG[l].y - 40);
       sfx.cash();
       state.served++;
-      queue.shift();
+      queues[l].shift();
       leave(front, 'happy');
     }
   }
@@ -375,10 +497,10 @@ function updatePlayer(dt) {
   for (const s of SECTIONS) {
     const st = state.sec[s.id];
     if (st.unlocked || !canUnlockNext(s.id)) continue;
-    if (inRect(p, padRect(s.front)) && state.money > 0) {
+    if (inRect(p, padRect(s.pad)) && state.money > 0) {
       const amt = Math.min(state.money, s.unlock - st.paid, Math.max(25, s.unlock / 1.6) * dt);
       state.money -= amt; st.paid += amt;
-      if (Math.random() < dt * 20) fx.push({ type: 'coin', x: p.x, y: p.y - 30, tx: s.front.x, ty: s.front.y, t: 0 });
+      if (Math.random() < dt * 20) fx.push({ type: 'coin', x: p.x, y: p.y - 30, tx: s.pad.x, ty: s.pad.y, t: 0 });
       if (st.paid >= s.unlock - 1e-6) unlockSection(s.id);
     }
   }
@@ -409,6 +531,16 @@ function moveAxis(p, dx, dy) {
   if (obstacles().some(r => inRect(probe, r, PLAYER_R - 2))) return;
   p.x = nx; p.y = ny;
 }
+// Nudge someone out of a piece of furniture (e.g. a shelf that just appeared)
+function pushOut(p, r) {
+  if (!r || !inRect(p, r, PLAYER_R)) return;
+  const opts = [
+    { x: r.x - PLAYER_R - 4, y: p.y }, { x: r.x + r.w + PLAYER_R + 4, y: p.y },
+    { x: p.x, y: r.y - PLAYER_R - 4 }, { x: p.x, y: r.y + r.h + PLAYER_R + 4 },
+  ].filter(o => o.x > 30 && o.x < W - 30);
+  const best = opts.sort((a, b) => dist(a, p) - dist(b, p))[0];
+  p.x = best.x; p.y = best.y;
+}
 // Sections unlock in order
 function canUnlockNext(id) {
   const i = SECTIONS.findIndex(s => s.id === id);
@@ -420,18 +552,15 @@ function unlockSection(id) {
   if (SEC[id].shelf) st.stock = 3;
   sfx.unlock(); confetti();
   toast(`${SEC[id].icon} ${SEC[id].name} unlocked!`);
-  // Push the player off the new shelf if needed
-  const p = state.player;
-  if (SEC[id].shelf && inRect(p, SEC[id].shelf, PLAYER_R)) p.y = SEC[id].shelf.y + SEC[id].shelf.h + PLAYER_R + 4;
-  if (SEC[id].bench && inRect(p, SEC[id].bench, PLAYER_R)) p.y = SEC[id].bench.y + SEC[id].bench.h + PLAYER_R + 4;
+  pushOut(state.player, SEC[id].shelf || SEC[id].bench);
   save();
 }
 
 // ---------- Staff NPCs ----------
 function ensureNpcs() {
-  if (state.staff.cashier && !npcs.cashier) npcs.cashier = { x: REGISTER.x - 34, y: REGISTER.y, path: [], speed: 0, shirt: '#2b2350', skin: '#e0ac69', hair: '#111', cap: '#ffc83d', face: 1 };
-  if (state.staff.tech && !npcs.tech) npcs.tech = { x: SEC.svc.bench.x + 95, y: SEC.svc.bench.y - 22, path: [], speed: 0, shirt: '#ff6b9a', skin: '#c68642', hair: '#2b1d0e', cap: '#2b2350', face: 1 };
-  if (state.staff.stocker && !npcs.stocker) npcs.stocker = { x: AISLE_X, y: 180, path: [], speed: 125, shirt: '#06d6a0', skin: '#f5d0a9', hair: '#b5542b', cap: '#2b2350', carry: [], job: 'idle', timer: 0, face: 1 };
+  if (state.staff.cashier && !npcs.cashier) npcs.cashier = { x: REG[1].x + 8, y: REG[1].y, path: [], speed: 0, shirt: '#2b2350', skin: '#e0ac69', hair: '#111', cap: '#ffc83d', face: 1 };
+  if (state.staff.tech && !npcs.tech) npcs.tech = { x: SEC.svc.bench.x + SEC.svc.bench.w + 22, y: SEC.svc.bench.y + 30, path: [], speed: 0, shirt: '#ff6b9a', skin: '#c68642', hair: '#2b1d0e', cap: '#2b2350', face: 1 };
+  if (state.staff.stocker && !npcs.stocker) npcs.stocker = { x: 300, y: 178, path: [], speed: 125, shirt: '#06d6a0', skin: '#f5d0a9', hair: '#b5542b', cap: '#2b2350', carry: [], job: 'idle', timer: 0, face: 1 };
 }
 function updateStocker(dt) {
   const n = npcs.stocker;
@@ -447,7 +576,7 @@ function updateStocker(dt) {
       .map(s => ({ s, ratio: state.sec[s.id].stock / shelfCap(s.id) }))
       .filter(o => o.ratio < 0.6)
       .sort((a, b) => a.ratio - b.ratio)[0];
-    if (!need) return;
+    if (!need) { if (dist(n, { x: 300, y: 178 }) > 4) n.path = route(n, { x: 300, y: 178 }); return; }
     n.target = need.s.id; n.job = 'load';
     n.path = route(n, need.s.crate);
   } else if (n.job === 'load') {
@@ -456,8 +585,9 @@ function updateStocker(dt) {
     if (n.carry.length < want && n.timer > 0.3 * stockerHandTime()) { n.carry.push(n.target); n.timer = 0; }
     if (n.carry.length >= want) {
       n.job = 'unload'; n.timer = 0;
-      const f = SEC[n.target].front;
-      n.path = route(n, { x: f.x + (Math.random() * 60 - 30), y: f.y - 8 });
+      const f = SEC[n.target].stockSpot;
+      const vert = SEC[n.target].shelf.h > SEC[n.target].shelf.w;
+      n.path = route(n, vert ? { x: f.x, y: f.y + (Math.random() * 160 - 80) } : { x: f.x + (Math.random() * 120 - 60), y: f.y });
     }
   } else if (n.job === 'unload') {
     const st = state.sec[n.target];
@@ -587,19 +717,32 @@ function drawFloor() {
     ctx.fillRect(x, y, 40, 40);
   }
   ctx.restore();
-  // door
+  // painted one-way loop with chevrons
+  ctx.save();
+  ctx.strokeStyle = 'rgba(155,135,230,.22)'; ctx.lineWidth = 34; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(LOOP[0].x, LOOP[0].y); for (const p of LOOP.slice(1)) ctx.lineTo(p.x, p.y); ctx.stroke();
+  ctx.fillStyle = 'rgba(120,100,210,.35)';
+  for (let s = 60; s < S_END - 20; s += 70) {
+    const a = loopPoint(s), b = loopPoint(s + 1);
+    ctx.save(); ctx.translate(a.x, a.y); ctx.rotate(Math.atan2(b.y - a.y, b.x - a.x));
+    ctx.beginPath(); ctx.moveTo(8, 0); ctx.lineTo(-6, -9); ctx.lineTo(-2, 0); ctx.lineTo(-6, 9); ctx.closePath(); ctx.fill();
+    ctx.restore();
+  }
+  ctx.restore();
+  // doors
   ctx.fillStyle = '#8fd3ff';
-  ctx.fillRect(250, H - 18, 100, 18);
-  text('ENTRANCE', 300, H - 9, 11, '#1d4e74');
-  // entrance mat
-  rr(255, H - 70, 90, 46, 8); ctx.fillStyle = '#d8d0f5'; ctx.fill();
+  ctx.fillRect(ENTRANCE.x, H - 18, ENTRANCE.w, 18);
+  ctx.fillRect(EXIT.x, H - 18, EXIT.w, 18);
+  text('ENTRANCE', ENTRANCE.x + ENTRANCE.w / 2, H - 9, 11, '#1d4e74');
+  text('EXIT', EXIT.x + EXIT.w / 2, H - 9, 11, '#1d4e74');
+  rr(ENTRANCE.x + 15, H - 66, ENTRANCE.w - 30, 42, 8); ctx.fillStyle = '#d8d0f5'; ctx.fill();
 }
 
 function drawStockroom() {
-  rr(16, 16, W - 32, 150, 10); ctx.fillStyle = '#d9cfa8'; ctx.fill();
+  rr(16, 16, W - 32, STOCKROOM_H, 10); ctx.fillStyle = '#d9cfa8'; ctx.fill();
   ctx.strokeStyle = '#b9ab78'; ctx.lineWidth = 3;
-  ctx.setLineDash([10, 8]); ctx.beginPath(); ctx.moveTo(16, 166); ctx.lineTo(W - 16, 166); ctx.stroke(); ctx.setLineDash([]);
-  text('STOCKROOM', 300, 32, 13, '#7a6a35');
+  ctx.setLineDash([10, 8]); ctx.beginPath(); ctx.moveTo(16, 16 + STOCKROOM_H); ctx.lineTo(W - 16, 16 + STOCKROOM_H); ctx.stroke(); ctx.setLineDash([]);
+  text('STOCKROOM', 300, 30, 13, '#7a6a35');
   for (const s of PARTS) {
     const r = crateRect(s);
     const on = state.sec[s.id].unlocked;
@@ -609,7 +752,7 @@ function drawStockroom() {
     ctx.strokeStyle = '#a77c34'; ctx.lineWidth = 3;
     ctx.beginPath(); ctx.moveTo(r.x + 6, r.y + r.h / 2); ctx.lineTo(r.x + r.w - 6, r.y + r.h / 2); ctx.stroke();
     drawEmoji(on ? s.icon : '🔒', s.crate.x, s.crate.y - 4, 24);
-    text(s.items[0].toUpperCase() + s.items.slice(1), s.crate.x, r.y + r.h + 16, 11, '#7a6a35');
+    text(s.items[0].toUpperCase() + s.items.slice(1), s.crate.x, r.y + r.h + 14, 11, '#7a6a35');
     ctx.globalAlpha = 1;
   }
 }
@@ -617,10 +760,12 @@ function drawStockroom() {
 function drawShelf(s) {
   const st = state.sec[s.id];
   const r = s.shelf;
+  const vert = r.h > r.w;
   if (!st.unlocked) {
     ctx.setLineDash([8, 6]); ctx.lineWidth = 3; ctx.strokeStyle = '#b8aee0';
     rr(r.x, r.y, r.w, r.h, 10); ctx.stroke(); ctx.setLineDash([]);
-    text(s.name, r.x + r.w / 2, r.y + r.h / 2, 14, '#a59bd0');
+    if (vert) { ctx.save(); ctx.translate(r.x + r.w / 2, r.y + r.h / 2); ctx.rotate(-Math.PI / 2); text(s.name, 0, 0, 14, '#a59bd0'); ctx.restore(); }
+    else text(s.name, r.x + r.w / 2, r.y + r.h / 2, 14, '#a59bd0');
     return;
   }
   // drop zone hint when carrying this item
@@ -635,43 +780,58 @@ function drawShelf(s) {
   // items on the shelf
   const cap = shelfCap(s.id);
   const per = Math.min(10, cap);
-  const step = (r.w - 24) / (per - 1 || 1);
+  const len = vert ? r.h : r.w;
+  const step = (len - 24) / (per - 1 || 1);
   for (let i = 0; i < st.stock; i++) {
     const col = i % per, row = Math.floor(i / per);
-    drawEmoji(s.icon, r.x + 12 + col * step, r.y + r.h / 2 - row * 8, 17);
+    if (vert) drawEmoji(s.icon, r.x + r.w / 2 + row * 6, r.y + 12 + col * step, 17);
+    else drawEmoji(s.icon, r.x + 12 + col * step, r.y + r.h / 2 - row * 8, 17);
   }
   // sign
   const label = `${s.name} · ${money$(price(s.id))}`;
-  rr(r.x + r.w / 2 - 78, r.y - 24, 156, 20, 8); ctx.fillStyle = s.color; ctx.fill();
-  text(label, r.x + r.w / 2, r.y - 14, 11, '#fff');
-  text(`${st.stock}/${cap}`, r.x + r.w - 4, r.y + r.h + 16, 11, st.stock ? '#6b6390' : '#ff5a5f', 700, 'right');
-  if (!st.stock) outlinedText('EMPTY!', r.x + r.w / 2, r.y + r.h / 2, 15, '#ff5a5f', '#fff');
+  ctx.font = '700 11px Fredoka, ui-rounded, system-ui, sans-serif';
+  const lw = ctx.measureText(label).width + 20;
+  const lx = Math.max(20 + lw / 2, Math.min(W - 20 - lw / 2, r.x + r.w / 2));
+  const ly = s.id === 'gpu' ? r.y + r.h + 22 : r.y - 14;
+  rr(lx - lw / 2, ly - 10, lw, 20, 8); ctx.fillStyle = s.color; ctx.fill();
+  text(label, lx, ly, 11, '#fff');
+  const cx = vert ? (r.x < W / 2 ? r.x + r.w + 6 : r.x - 6) : r.x + r.w + 8;
+  const cy = vert ? r.y + r.h + 14 : r.y + r.h / 2;
+  text(`${st.stock}/${cap}`, cx, cy, 11, st.stock ? '#6b6390' : '#ff5a5f', 700, vert ? (r.x < W / 2 ? 'left' : 'right') : 'left');
+  if (!st.stock) {
+    if (vert) { ctx.save(); ctx.translate(r.x + r.w / 2, r.y + r.h / 2); ctx.rotate(-Math.PI / 2); outlinedText('EMPTY!', 0, 0, 15, '#ff5a5f', '#fff'); ctx.restore(); }
+    else outlinedText('EMPTY!', r.x + r.w / 2, r.y + r.h / 2, 15, '#ff5a5f', '#fff');
+  }
 }
 
 function drawCheckout() {
-  const r = COUNTER;
-  // register pad (where you stand)
-  const here = dist(state.player, REGISTER) < 36;
-  ctx.beginPath(); ctx.arc(REGISTER.x, REGISTER.y, 28, 0, Math.PI * 2);
-  ctx.fillStyle = here ? 'rgba(46,204,113,.45)' : 'rgba(255,200,61,.45)'; ctx.fill();
-  ctx.setLineDash([6, 5]); ctx.lineWidth = 3; ctx.strokeStyle = here ? '#1e9e55' : '#d99a00'; ctx.stroke(); ctx.setLineDash([]);
-  rr(r.x, r.y + 8, r.w, r.h, 10); ctx.fillStyle = '#7a4b1e'; ctx.fill();
-  rr(r.x, r.y, r.w, r.h, 10); ctx.fillStyle = '#b8743a'; ctx.fill();
-  rr(r.x + 90, r.y + 6, 44, 26, 6); ctx.fillStyle = '#2b2350'; ctx.fill();
-  rr(r.x + 95, r.y + 10, 34, 12, 3); ctx.fillStyle = '#7ef0a8'; ctx.fill();
-  text('CHECKOUT', r.x + 46, r.y + r.h / 2, 12, '#fff');
-  // queue markers
-  for (let i = 0; i < 5; i++) {
-    const q = queueSlot(i);
-    ctx.beginPath(); ctx.arc(q.x, q.y + 12, 6, 0, Math.PI * 2); ctx.fillStyle = '#d8d0f5'; ctx.fill();
-  }
-  if (queue.length && !here && !state.staff.cashier) outlinedText('Customers waiting!', REGISTER.x, REGISTER.y - 42, 12, '#ffc83d');
-  // scan progress
-  const f = queue[0];
-  if (f && f.cart.length && (here || state.staff.cashier)) {
-    const pct = f.scanned / f.cart.length;
-    rr(r.x + 20, r.y + r.h + 14, 120, 8, 4); ctx.fillStyle = '#ddd6f7'; ctx.fill();
-    rr(r.x + 20, r.y + r.h + 14, 120 * pct, 8, 4); ctx.fillStyle = '#2ecc71'; ctx.fill();
+  text('CHECKOUT', 390, 892, 13, '#7a4b1e');
+  for (let l = 0; l < 2; l++) {
+    const r = COUNTERS[l], reg = REG[l];
+    const here = dist(state.player, reg) < REG_RADIUS;
+    const staffed = l === 1 && state.staff.cashier;
+    // register spot
+    ctx.beginPath(); ctx.arc(reg.x, reg.y, 24, 0, Math.PI * 2);
+    ctx.fillStyle = here ? 'rgba(46,204,113,.45)' : 'rgba(255,200,61,.45)'; ctx.fill();
+    ctx.setLineDash([6, 5]); ctx.lineWidth = 3; ctx.strokeStyle = here ? '#1e9e55' : '#d99a00'; ctx.stroke(); ctx.setLineDash([]);
+    // counter
+    rr(r.x, r.y + 7, r.w, r.h, 9); ctx.fillStyle = '#7a4b1e'; ctx.fill();
+    rr(r.x, r.y, r.w, r.h, 9); ctx.fillStyle = '#b8743a'; ctx.fill();
+    rr(r.x + 6, r.y + 30, r.w - 12, 26, 5); ctx.fillStyle = '#2b2350'; ctx.fill();
+    rr(r.x + 9, r.y + 34, r.w - 18, 10, 3); ctx.fillStyle = '#7ef0a8'; ctx.fill();
+    text(l === 0 ? 'LANE 1' : 'LANE 2', r.x + r.w / 2, r.y - 10, 10, '#7a4b1e');
+    // queue markers
+    for (let i = 0; i < 4; i++) {
+      const q = queueSlot(l, i);
+      ctx.beginPath(); ctx.arc(q.x, q.y + 10, 5, 0, Math.PI * 2); ctx.fillStyle = '#d8d0f5'; ctx.fill();
+    }
+    const f = queues[l][0];
+    if (f && f.cart.length && (here || staffed)) {
+      const pct = f.scanned / f.cart.length;
+      rr(r.x - 8, r.y + r.h + 14, 52, 7, 3); ctx.fillStyle = '#ddd6f7'; ctx.fill();
+      rr(r.x - 8, r.y + r.h + 14, 52 * pct, 7, 3); ctx.fillStyle = '#2ecc71'; ctx.fill();
+    }
+    if (queues[l].length && !here && !staffed) outlinedText('Customers waiting!', reg.x, reg.y + 42, 11, '#ffc83d');
   }
 }
 
@@ -684,7 +844,7 @@ function drawService() {
     return;
   }
   const here = dist(state.player, s.workPad) < 34;
-  ctx.beginPath(); ctx.arc(s.workPad.x, s.workPad.y, 26, 0, Math.PI * 2);
+  ctx.beginPath(); ctx.arc(s.workPad.x, s.workPad.y, 22, 0, Math.PI * 2);
   ctx.fillStyle = here ? 'rgba(46,204,113,.45)' : 'rgba(255,107,154,.35)'; ctx.fill();
   ctx.setLineDash([6, 5]); ctx.lineWidth = 3; ctx.strokeStyle = here ? '#1e9e55' : '#ff6b9a'; ctx.stroke(); ctx.setLineDash([]);
   rr(r.x, r.y + 8, r.w, r.h, 10); ctx.fillStyle = '#9a3d5c'; ctx.fill();
@@ -695,9 +855,9 @@ function drawService() {
   drawEmoji(waiting ? '🖥️' : '🧰', r.x + 60, r.y + r.h / 2, 22);
   drawEmoji('🔧', r.x + 120, r.y + r.h / 2, 18);
   if (waiting) {
-    rr(r.x + 20, r.y + r.h + 46, 150, 10, 5); ctx.fillStyle = '#ddd6f7'; ctx.fill();
-    rr(r.x + 20, r.y + r.h + 46, 150 * buildProgress, 10, 5); ctx.fillStyle = '#ff6b9a'; ctx.fill();
-    if (!here && !state.staff.tech) outlinedText('Build a PC here!', s.workPad.x, s.workPad.y + 40, 12, '#ffc83d');
+    rr(r.x + 15, r.y + r.h + 6, 150, 8, 4); ctx.fillStyle = '#ddd6f7'; ctx.fill();
+    rr(r.x + 15, r.y + r.h + 6, 150 * buildProgress, 8, 4); ctx.fillStyle = '#ff6b9a'; ctx.fill();
+    if (!here && !state.staff.tech) outlinedText('Build a PC here!', s.workPad.x - 40, s.workPad.y + 34, 12, '#ffc83d');
   }
 }
 
@@ -705,11 +865,11 @@ function drawUnlockPads() {
   for (const s of SECTIONS) {
     const st = state.sec[s.id];
     if (st.unlocked || !canUnlockNext(s.id)) continue;
-    const r = padRect(s.front);
+    const r = padRect(s.pad);
     const pct = st.paid / s.unlock;
     const pulse = 1 + 0.04 * Math.sin(time * 5);
     ctx.save();
-    ctx.translate(s.front.x, s.front.y); ctx.scale(pulse, pulse); ctx.translate(-s.front.x, -s.front.y);
+    ctx.translate(s.pad.x, s.pad.y); ctx.scale(pulse, pulse); ctx.translate(-s.pad.x, -s.pad.y);
     rr(r.x, r.y + 5, r.w, r.h, 12); ctx.fillStyle = '#d99a00'; ctx.fill();
     rr(r.x, r.y, r.w, r.h, 12); ctx.fillStyle = '#ffe17a'; ctx.fill();
     ctx.save(); rr(r.x, r.y, r.w, r.h, 12); ctx.clip();
@@ -809,17 +969,17 @@ function drawFx() {
 // ---------- Objective arrow (tutorial help) ----------
 function objective() {
   const p = state.player;
-  const atReg = dist(p, REGISTER) < 36;
+  const atReg = dist(p, REG[0]) < REG_RADIUS || dist(p, REG[1]) < REG_RADIUS;
   const carried = state.carry[0];
   if (carried) {
     const s = SEC[carried];
-    if (state.sec[carried].stock < shelfCap(carried)) return { pt: s.front, text: `Put the ${s.items} on the ${s.name} shelf` };
+    if (state.sec[carried].stock < shelfCap(carried)) return { pt: s.stockSpot, text: `Put the ${s.items} on the ${s.name} shelf` };
   }
-  if (queue.length && !state.staff.cashier) return atReg ? { pt: REGISTER, text: 'Stay here to check out the line' } : { pt: REGISTER, text: 'Go to the register to check out customers' };
+  if (queues[0].length && !state.staff.cashier) return atReg ? { pt: REG[0], text: 'Stay here to check out the line' } : { pt: REG[0], text: 'Go to the register to check out customers' };
   const svcWaiting = customers.some(c => c.state === 'svc' && !c.path.length);
   if (svcWaiting && !state.staff.tech && dist(p, SEC.svc.workPad) > 34) return { pt: SEC.svc.workPad, text: 'A customer wants a custom PC. Go build it!' };
   const next = SECTIONS.find(s => !state.sec[s.id].unlocked);
-  if (next && state.money >= next.unlock - state.sec[next.id].paid) return { pt: next.front, text: `Stand on the pad to unlock ${next.name}` };
+  if (next && state.money >= next.unlock - state.sec[next.id].paid) return { pt: next.pad, text: `Stand on the pad to unlock ${next.name}` };
   for (const k in HIRE_PADS) {
     if (!state.staff[k] && state.money >= staffRemaining(k) && !inRect(p, padRect(HIRE_PADS[k])))
       return { pt: HIRE_PADS[k], text: `Stand on the pad to hire a ${HIRE_PADS[k].label.toLowerCase()}` };
@@ -890,7 +1050,7 @@ function updateHud(dt) {
   hudTimer = 0;
   $('#incomeVal').textContent = money$(state.rate * 60);
   $('#storeName').textContent = state.storeName;
-  currentObjective = state.lifetime < 4000 || (queue.length && !state.staff.cashier) ? objective() : null;
+  currentObjective = state.lifetime < 4000 || (queues[0].length && !state.staff.cashier) ? objective() : null;
   const hint = $('#hint');
   hint.textContent = currentObjective ? currentObjective.text : '';
   hint.classList.toggle('show', !!currentObjective);
@@ -1058,7 +1218,7 @@ document.addEventListener('click', e => {
       break;
     case 'confirmReset':
       state = freshState();
-      customers = []; queue = []; fx = []; buildProgress = 0;
+      customers = []; queues = [[], []]; fx = []; buildProgress = 0;
       for (const k in npcs) delete npcs[k];
       save(); closeModal();
       break;
