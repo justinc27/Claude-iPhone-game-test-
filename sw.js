@@ -1,5 +1,5 @@
 // Offline support: serve cached files, refresh them in the background.
-const CACHE = 'pc-tycoon-v1';
+const CACHE = 'pc-tycoon-v2';
 const FILES = ['./', 'index.html', 'style.css', 'game.js', 'manifest.webmanifest', 'icons/icon.svg', 'icons/icon-180.png', 'icons/icon-192.png', 'icons/icon-512.png'];
 
 self.addEventListener('install', e => {

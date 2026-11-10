@@ -1,26 +1,27 @@
 # PC Parts Tycoon 🖥️💰
 
-An idle tycoon game for iPhone. You own a PC parts superstore: sell parts, unlock new departments, level them up, hire managers, and build custom PCs for customers.
+A store tycoon game for iPhone. You run a PC parts store as a character on the shop floor: restock the shelves, check out shoppers, unlock new sections, level them up and hire staff.
 
 ## How to play
 
-| Section | Unlocks at | Sells |
+You play a store clerk on the shop floor. **Drag anywhere on the screen** to show a joystick and walk around. On a computer, the arrow keys or WASD also work.
+
+- **Restock shelves.** Walk onto a crate in the **stockroom** (top of the store) to pick up boxes. Walk next to the matching shelf to stock it. Shoppers can't buy from an empty shelf, and they leave unhappy if they wait too long.
+- **Check people out.** Shoppers roam the aisles for the items in their thought bubble, then line up at the **checkout**. Stand on the yellow circle behind the counter to scan their items and get paid.
+- **Unlock new sections.** Stand on a yellow **UNLOCK** pad and your cash flows into it.
+
+| Section | Unlock price | Starting item price |
 |---|---|---|
-| 🖱️ Accessories | Start | USB cables → mice → keyboards → headsets → … |
-| 🗄️ PC Cases | $250 | Budget towers → mid towers → glass RGB → … |
-| 🖥️ Monitors | $5,000 | 1080p → 1440p → ultrawide → 4K → OLED … |
-| 🎮 Graphics Cards | $75,000 | Entry → mainstream → enthusiast → flagship … |
-| 🛠️ Service Station | $1,000,000 | Repairs and PC builds, plus the **Custom Build Desk** |
+| 🖱️ Accessories | Start | $8 |
+| 🗄️ PC Cases | $120 | $25 |
+| 🖥️ Monitors | $600 | $60 |
+| 🎮 Graphics Cards | $2,500 | $140 |
+| 🛠️ Service Station | $10,000 | $400 per build |
 
-- **Tap a section's icon** to make a sale. When the green bar fills, you get paid.
-- **Level Up** raises the sale price. Hold the button to keep buying. The yellow button in the top right switches between buying x1, x10, x100 and MAX.
-- **Milestones** at levels 10, 25, 50, 100, 150, 200, … double profit. Levels 25, 50, 100 and 200 also double speed. Some milestones upgrade the product you sell, for example Mid Towers to Glass RGB Cases.
-- **Managers** run a section for you, even while the app is closed. You collect up to 8 hours of offline earnings.
-- **Upgrades** multiply a section's profit (x3, x5, x9).
-- **Custom Build Desk**: once you own the Service Station, customers ask for a specific PC. Tap the right case, GPU, monitor and accessory from the shelf. Each wrong part lowers the reward.
-- **Franchise** (prestige): after $1B in lifetime earnings, sell your store and start over with ⭐ Stars. Each Star gives +2% profit permanently.
-
-Progress saves automatically on the device.
+- **Service Station:** some customers want a custom PC. Stand on the pink circle in front of the bench to assemble it, then they pay you.
+- **Upgrades (⬆️ button):** level up a section to raise its item price (x2 at levels 10, 25, 50 and 100, and bigger shelves). Hire staff: a **cashier** runs the register, a **stocker** refills shelves, and a **tech** builds PCs. You can also buy faster shoes and a bigger carrying stack.
+- A yellow arrow and hint point to what to do next while you're learning.
+- Progress saves automatically. With a cashier and a stocker hired, the store keeps earning while the app is closed (up to 2 hours).
 
 ## Play it on an iPhone
 
@@ -45,6 +46,6 @@ npx cap add ios && npx cap open ios   # requires a Mac with Xcode
 ## Files
 
 - `index.html`: page shell, top bar, tab bar
-- `style.css`: idle-game look (chunky cards, gold buttons, progress bars, animations)
-- `game.js`: all game data (sections, prices, managers, upgrades) and logic. Tune balance in the `SECTIONS` and `UPGRADES` tables at the top.
+- `style.css`: top bar, joystick, upgrade panel and pop-ups
+- `game.js`: the store layout, shoppers, staff, controls and drawing. Tune prices and unlock costs in the `SECTIONS` table at the top, and staff in `STAFF`.
 - `sw.js`, `manifest.webmanifest`, `icons/`: offline support and the home-screen icon

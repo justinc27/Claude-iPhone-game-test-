@@ -1,137 +1,79 @@
 'use strict';
 
 /* =========================================================
-   PC Parts Tycoon — an idle game about running a PC superstore
+   PC Parts Tycoon — run a PC parts store as a character.
+   Move with the touch joystick, restock shelves from the
+   stockroom, and check shoppers out at the register.
    ========================================================= */
 
-const SAVE_KEY = 'pcPartsTycoon_save_v1';
-const OFFLINE_CAP_SECONDS = 8 * 3600;      // offline earnings cap
-const STAR_BONUS = 0.02;                    // +2% profit per Franchise Star
+const SAVE_KEY = 'pcPartsTycoon_store_v2';
+const W = 600, H = 1020;             // world size in world units
+const AISLE_X = 300;                 // central aisle shoppers walk along
+const DOOR = { x: 300, y: 1000 };
+const VIEW_UNITS = 610;              // how many world units fit across the screen
+const MILESTONES = [10, 25, 50, 100];
 
-// ---------- Store sections ----------
-// Level N -> N+1 costs baseCost * growth^N. Buying level 1 = unlocking the section.
-// Each sale earns baseRevenue * level * multipliers, every `time` seconds.
+// ---------- Store layout & sections ----------
 const SECTIONS = [
-  {
-    id: 'acc', name: 'Accessories', icon: '🖱️', color: '#7fd4ff',
-    baseCost: 4, growth: 1.07, baseRevenue: 1, time: 1.2,
-    manager: { name: 'Kev the Cable Guy', icon: '🧑‍🔧', cost: 1000 },
-    tiers: [
-      [1, 'USB Cables'], [10, 'Gaming Mice'], [25, 'Mech Keyboards'], [50, 'Gaming Headsets'],
-      [100, 'Webcams'], [200, 'Streaming Mics'], [400, 'Pro Peripheral Bundles'],
-    ],
-  },
-  {
-    id: 'case', name: 'PC Cases', icon: '🗄️', color: '#c3a6ff',
-    baseCost: 250, growth: 1.15, baseRevenue: 60, time: 3,
-    manager: { name: 'Tina Tower', icon: '👩‍💼', cost: 15000 },
-    tiers: [
-      [1, 'Budget Towers'], [10, 'Mid Towers'], [25, 'Airflow Mesh Cases'], [50, 'Glass RGB Cases'],
-      [100, 'Full Towers'], [200, 'Custom Loop Cases'], [400, 'Showcase Chassis'],
-    ],
-  },
-  {
-    id: 'mon', name: 'Monitors', icon: '🖥️', color: '#8ff0c4',
-    baseCost: 5000, growth: 1.14, baseRevenue: 900, time: 6,
-    manager: { name: 'Pixel Pete', icon: '🧑‍💻', cost: 120000 },
-    tiers: [
-      [1, '24" 1080p Monitors'], [10, '27" 1440p Monitors'], [25, '144Hz Gaming Monitors'], [50, 'Ultrawides'],
-      [100, '4K HDR Monitors'], [200, 'OLED 240Hz Monitors'], [400, 'Pro Dual-Screen Setups'],
-    ],
-  },
-  {
-    id: 'gpu', name: 'Graphics Cards', icon: '🎮', color: '#ffb36b',
-    baseCost: 75000, growth: 1.13, baseRevenue: 9000, time: 12,
-    manager: { name: 'Frames Fiona', icon: '👩‍🎤', cost: 1.5e6 },
-    tiers: [
-      [1, 'Entry GPUs'], [10, 'Mainstream GPUs'], [25, 'Performance GPUs'], [50, 'Enthusiast GPUs'],
-      [100, 'Flagship GPUs'], [200, 'Workstation GPUs'], [400, 'Quantum GPUs'],
-    ],
-  },
-  {
-    id: 'svc', name: 'Service Station', icon: '🛠️', color: '#ff8fb1',
-    baseCost: 1e6, growth: 1.12, baseRevenue: 120000, time: 24,
-    manager: { name: 'Builder Bo', icon: '👷', cost: 2.5e7 },
-    tiers: [
-      [1, 'Basic Repairs'], [10, 'Office PC Builds'], [25, 'Gaming PC Builds'], [50, 'Streaming Rigs'],
-      [100, 'Creator Workstations'], [200, 'Liquid-Cooled Beasts'], [400, 'Server Racks'],
-    ],
-  },
+  { id: 'acc', name: 'Accessories', item: 'Mouse', items: 'mice', icon: '🖱️', color: '#4fb3ff', price: 8, unlock: 0,
+    shelf: { x: 40, y: 220, w: 190, h: 42 }, crate: { x: 85, y: 95 } },
+  { id: 'case', name: 'PC Cases', item: 'PC Case', items: 'PC cases', icon: '🗄️', color: '#a77bff', price: 25, unlock: 120,
+    shelf: { x: 370, y: 220, w: 190, h: 42 }, crate: { x: 405, y: 95 } },
+  { id: 'mon', name: 'Monitors', item: 'Monitor', items: 'monitors', icon: '🖥️', color: '#2ecc8f', price: 60, unlock: 600,
+    shelf: { x: 40, y: 380, w: 190, h: 42 }, crate: { x: 195, y: 95 } },
+  { id: 'gpu', name: 'Graphics Cards', item: 'GPU', items: 'GPUs', icon: '🎮', color: '#ff9f43', price: 140, unlock: 2500,
+    shelf: { x: 370, y: 380, w: 190, h: 42 }, crate: { x: 515, y: 95 } },
+  { id: 'svc', name: 'Service Station', item: 'Custom PC', items: 'custom PCs', icon: '🛠️', color: '#ff6b9a', price: 400, unlock: 10000,
+    bench: { x: 370, y: 545, w: 190, h: 40 } },
 ];
 const SEC = Object.fromEntries(SECTIONS.map(s => [s.id, s]));
+const PARTS = SECTIONS.filter(s => s.shelf);
+for (const s of PARTS) s.front = { x: s.shelf.x + s.shelf.w / 2, y: s.shelf.y + s.shelf.h + 28 };
+SEC.svc.front = { x: 465, y: 618 };            // unlock pad
+SEC.svc.custSpot = { x: 525, y: 615 };          // where the build customer waits
+SEC.svc.workPad = { x: 410, y: 618 };           // where you stand to assemble
+const COUNTER = { x: 40, y: 690, w: 160, h: 40 };
+const REGISTER = { x: 120, y: 662 };            // stand here to check people out
+const CRATE_W = 84, CRATE_H = 64;
 
-// Milestones: every milestone doubles profit; some also double speed.
-const MILESTONES = [10, 25, 50, 100, 150, 200, 300, 400, 500, 750, 1000, 1500, 2000];
-const SPEED_MILESTONES = new Set([25, 50, 100, 200]);
+function queueSlot(i) {
+  const col = Math.floor(i / 5), row = i % 5;
+  return { x: 120 + col * 50, y: 768 + row * 46 };
+}
 
-// ---------- Cash upgrades ----------
-const UPGRADES = (() => {
-  const targets = [
-    { t: 'acc', base: 25e3, names: ['Impulse-Buy Racks', 'RGB Cable Wall', 'Influencer Unboxings', 'Peripheral Megastore'] },
-    { t: 'case', base: 1e5, names: ['Showroom Lighting', 'Build-Your-Own Display', 'Tempered Glass Deals', 'Case Mod Contest'] },
-    { t: 'mon', base: 1e6, names: ['Demo Wall', 'Calibration Service', 'Esports Sponsorship', 'Holo Display Lab'] },
-    { t: 'gpu', base: 1e7, names: ['Restock Alerts', 'Benchmark Kiosk', 'Launch Day Lines', 'Direct Factory Deal'] },
-    { t: 'svc', base: 1e8, names: ['Pro Toolkits', 'Cable Management Pros', 'Same-Day Builds', 'Robot Assembly Line'] },
-    { t: 'all', base: 1e9, names: ['Grand Opening Ad', 'Loyalty Card', 'Weekend Mega Sale', 'Tech Expo Booth'] },
-  ];
-  const rounds = [{ mult: 3, costMul: 1 }, { mult: 3, costMul: 1e4 }, { mult: 5, costMul: 1e8 }, { mult: 9, costMul: 1e13 }];
-  const list = [];
-  rounds.forEach((r, ri) => targets.forEach(tg => list.push({
-    id: `${tg.t}_${ri}`, target: tg.t, mult: r.mult, cost: tg.base * r.costMul, name: tg.names[ri],
-  })));
-  return list.sort((a, b) => a.cost - b.cost);
-})();
-
-// ---------- Build Station customers ----------
-const CUSTOMERS = [
-  { face: '🧑‍💻', name: 'Dev Dana', line: 'I need a rig that compiles fast!' },
-  { face: '👩‍🎤', name: 'Streamer Sky', line: 'Building my first streaming setup!' },
-  { face: '🧔', name: 'Big Mike', line: 'Gotta max out every game. Hook me up.' },
-  { face: '👵', name: 'Grandma June', line: 'My grandson says I need a "gaming PC".' },
-  { face: '🧑‍🎓', name: 'Student Sam', line: 'Need something for school... and games.' },
-  { face: '🧑‍🎨', name: 'Artist Ari', line: 'Rendering 3D art all day long!' },
-  { face: '🕵️', name: 'Agent X', line: 'Build it quick. No questions.' },
-  { face: '👨‍🚀', name: 'Captain Nova', line: 'Mission control needs an upgrade!' },
-];
-const PART_SECTIONS = ['case', 'gpu', 'mon', 'acc'];
+// ---------- Staff & player upgrades ----------
+const STAFF = {
+  cashier: { name: 'Cashier Cass', icon: '🧑‍💼', cost: 500, desc: 'Checks out customers at the register' },
+  stocker: { name: 'Stocker Stan', icon: '🧑‍🔧', cost: 1500, desc: 'Carries stock to empty shelves' },
+  tech: { name: 'Tech Tara', icon: '👩‍💻', cost: 8000, desc: 'Assembles PCs at the Service Station' },
+};
+const MAX_PLAYER_LV = 8;
 
 // ---------- State ----------
-function freshRun(keep = {}) {
-  const sections = {};
-  for (const s of SECTIONS) sections[s.id] = { level: s.id === 'acc' ? 1 : 0, progress: 0, running: false, manager: false };
+function freshState(keep = {}) {
+  const sec = {};
+  for (const s of SECTIONS) sec[s.id] = { unlocked: s.unlock === 0, level: 1, stock: s.unlock === 0 ? 4 : 0, paid: 0 };
   return {
-    money: 0,
-    runEarned: 0,
-    lifetime: keep.lifetime || 0,
-    stars: keep.stars || 0,
-    starsClaimed: keep.starsClaimed || 0,
-    franchises: keep.franchises || 0,
-    buildsDone: keep.buildsDone || 0,
+    money: 0, lifetime: 0, served: 0, built: 0,
     storeName: keep.storeName || 'Byte Depot',
     sound: keep.sound !== undefined ? keep.sound : true,
-    sections,
-    upgrades: [],
-    buyMode: 0,
-    build: null,
-    nextBuildAt: 0,
+    sec, speedLv: 0, carryLv: 0,
+    staff: { cashier: false, stocker: false, tech: false },
+    player: { x: 300, y: 600 },
+    carry: [],
+    rate: 0,
     lastSeen: Date.now(),
   };
 }
-
-const loaded = load();
-const isNewPlayer = !loaded;
-let state = loaded || freshRun();
-let tab = 'store';
-const BUY_MODES = [1, 10, 100, 'MAX'];
-
 function load() {
   try {
     const raw = localStorage.getItem(SAVE_KEY);
     if (!raw) return null;
     const s = JSON.parse(raw);
-    const base = freshRun(s);
+    const base = freshState(s);
     const merged = Object.assign(base, s);
-    for (const sec of SECTIONS) merged.sections[sec.id] = Object.assign(base.sections[sec.id], (s.sections || {})[sec.id] || {});
+    for (const sc of SECTIONS) merged.sec[sc.id] = Object.assign(base.sec[sc.id], (s.sec || {})[sc.id] || {});
+    merged.staff = Object.assign(freshState().staff, s.staff || {});
     return merged;
   } catch (e) { return null; }
 }
@@ -139,75 +81,54 @@ function save() {
   state.lastSeen = Date.now();
   try { localStorage.setItem(SAVE_KEY, JSON.stringify(state)); } catch (e) { /* storage unavailable */ }
 }
+const loaded = load();
+const isNewPlayer = !loaded;
+let state = loaded || freshState();
 
-// ---------- Math ----------
-function milestonesReached(level) { return MILESTONES.filter(m => level >= m); }
-function nextMilestone(level) { return MILESTONES.find(m => level < m) || null; }
-function prevMilestone(level) { let p = 0; for (const m of MILESTONES) if (level >= m) p = m; return p; }
+// Runtime-only world objects
+let customers = [];
+let queue = [];
+let fx = [];
+let spawnTimer = 2;
+let serveTimer = 0, pickTimer = 0, dropTimer = 0;
+let buildProgress = 0;
+const npcs = {};
 
-function starMult() { return 1 + state.stars * STAR_BONUS; }
-function upgradeMult(id) {
-  let m = 1;
-  for (const u of UPGRADES) if (state.upgrades.includes(u.id) && (u.target === id || u.target === 'all')) m *= u.mult;
-  return m;
+// ---------- Economy ----------
+function price(id) {
+  const L = state.sec[id].level;
+  return SEC[id].price * (1 + 0.25 * (L - 1)) * Math.pow(2, MILESTONES.filter(m => L >= m).length);
 }
-function profitMult(id) {
-  const lvl = state.sections[id].level;
-  return Math.pow(2, milestonesReached(lvl).length) * upgradeMult(id) * starMult();
-}
-function revenue(id) { return SEC[id].baseRevenue * state.sections[id].level * profitMult(id); }
-function cycleTime(id) {
-  let t = SEC[id].time;
-  for (const m of milestonesReached(state.sections[id].level)) if (SPEED_MILESTONES.has(m)) t /= 2;
-  return t;
-}
-function incomePerSec(onlyManaged = true) {
-  let total = 0;
-  for (const s of SECTIONS) {
-    const st = state.sections[s.id];
-    if (st.level > 0 && (st.manager || !onlyManaged)) total += revenue(s.id) / cycleTime(s.id);
-  }
-  return total;
-}
-function costFor(id, n) {
-  const s = SEC[id], L = state.sections[id].level;
-  const first = s.baseCost * Math.pow(s.growth, L);
-  return first * (Math.pow(s.growth, n) - 1) / (s.growth - 1);
-}
-function maxAffordable(id) {
-  const s = SEC[id], L = state.sections[id].level;
-  const first = s.baseCost * Math.pow(s.growth, L);
-  const n = Math.floor(Math.log(state.money * (s.growth - 1) / first + 1) / Math.log(s.growth));
-  return Math.max(0, n);
-}
-function buyCount(id) {
-  const mode = BUY_MODES[state.buyMode];
-  if (mode === 'MAX') return Math.max(1, maxAffordable(id));
-  return mode;
-}
-function currentTier(id) {
-  const lvl = Math.max(1, state.sections[id].level);
-  let t = SEC[id].tiers[0][1];
-  for (const [l, n] of SEC[id].tiers) if (lvl >= l) t = n;
-  return t;
+function levelCost(id) { return SEC[id].price * 12 * Math.pow(1.32, state.sec[id].level - 1); }
+function shelfCap(id) { return Math.min(20, 6 + 2 * Math.floor((state.sec[id].level - 1) / 5)); }
+function playerSpeed() { return 165 + 20 * state.speedLv; }
+function carryCap() { return 4 + 2 * state.carryLv; }
+function speedCost() { return 80 * Math.pow(2, state.speedLv); }
+function carryCost() { return 120 * Math.pow(2.1, state.carryLv); }
+function unlockedParts() { return PARTS.filter(s => state.sec[s.id].unlocked); }
+
+let rateBucket = 0;
+function earn(amount, x, y) {
+  state.money += amount;
+  state.lifetime += amount;
+  rateBucket += amount;
+  if (x !== undefined) fx.push({ type: 'text', text: '+' + money$(amount), x, y, t: 0, color: '#2ecc71' });
+  bumpMoney();
 }
 
 // ---------- Formatting ----------
-const SUFFIX = ['', 'K', 'M', 'B', 'T', 'Qa', 'Qi', 'Sx', 'Sp', 'Oc', 'No', 'Dc', 'Ud', 'Dd', 'Td'];
+const SUFFIX = ['', 'K', 'M', 'B', 'T', 'Qa', 'Qi'];
 function fmt(n) {
-  if (!isFinite(n)) return '∞';
-  if (n < 1000) return n < 100 && n % 1 !== 0 ? n.toFixed(2).replace(/\.?0+$/, '') : Math.floor(n).toString();
+  if (n < 1000) return n % 1 === 0 ? String(n) : (n < 100 ? n.toFixed(2).replace(/\.?0+$/, '') : Math.floor(n).toString());
   const tier = Math.min(SUFFIX.length - 1, Math.floor(Math.log10(n) / 3));
   const v = n / Math.pow(1000, tier);
-  return (v >= 100 ? v.toFixed(1) : v.toFixed(2)) + SUFFIX[tier];
+  return (v >= 100 ? v.toFixed(0) : v.toFixed(1)) + SUFFIX[tier];
 }
 const money$ = n => '$' + fmt(n);
 function fmtTime(sec) {
-  if (sec < 1) return sec.toFixed(1) + 's';
   if (sec < 60) return Math.ceil(sec) + 's';
-  const m = Math.floor(sec / 60), s = Math.floor(sec % 60);
-  if (m < 60) return `${m}m ${s}s`;
-  return `${Math.floor(m / 60)}h ${m % 60}m`;
+  const m = Math.floor(sec / 60);
+  return m < 60 ? `${m}m ${Math.floor(sec % 60)}s` : `${Math.floor(m / 60)}h ${m % 60}m`;
 }
 
 // ---------- Sound ----------
@@ -216,6 +137,7 @@ function beep(freq = 880, dur = 0.07, type = 'sine', vol = 0.05) {
   if (!state.sound) return;
   try {
     audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
     const o = audioCtx.createOscillator(), g = audioCtx.createGain();
     o.type = type; o.frequency.value = freq;
     g.gain.setValueAtTime(vol, audioCtx.currentTime);
@@ -225,18 +147,750 @@ function beep(freq = 880, dur = 0.07, type = 'sine', vol = 0.05) {
   } catch (e) { /* no audio */ }
 }
 const sfx = {
-  coin: () => beep(1320, 0.06, 'triangle', 0.03),
-  buy: () => { beep(660, 0.05, 'square', 0.025); setTimeout(() => beep(990, 0.07, 'square', 0.025), 50); },
+  pick: () => beep(700, 0.04, 'triangle', 0.025),
+  drop: () => beep(520, 0.04, 'triangle', 0.025),
+  scan: () => beep(1500, 0.04, 'square', 0.015),
+  cash: () => { beep(1320, 0.06, 'triangle', 0.04); setTimeout(() => beep(1760, 0.08, 'triangle', 0.04), 60); },
   unlock: () => [523, 659, 784, 1047].forEach((f, i) => setTimeout(() => beep(f, 0.12, 'triangle', 0.05), i * 90)),
-  wrong: () => beep(160, 0.18, 'sawtooth', 0.04),
-  good: () => beep(1047, 0.08, 'triangle', 0.04),
+  sad: () => beep(180, 0.2, 'sawtooth', 0.03),
 };
 
-// ---------- Actions ----------
-function earn(amount) {
-  state.money += amount;
-  state.runEarned += amount;
-  state.lifetime += amount;
+// ---------- Geometry ----------
+const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+const inRect = (p, r, pad = 0) => p.x > r.x - pad && p.x < r.x + r.w + pad && p.y > r.y - pad && p.y < r.y + r.h + pad;
+function crateRect(s) { return { x: s.crate.x - CRATE_W / 2, y: s.crate.y - CRATE_H / 2, w: CRATE_W, h: CRATE_H }; }
+function padRect(p, w = 96, h = 56) { return { x: p.x - w / 2, y: p.y - h / 2, w, h }; }
+
+function obstacles() {
+  const list = [COUNTER];
+  for (const s of PARTS) if (state.sec[s.id].unlocked) list.push(s.shelf);
+  if (state.sec.svc.unlocked) list.push(SEC.svc.bench);
+  return list;
+}
+// For shoppers & staff: is a straight walk blocked by furniture?
+function segmentBlocked(a, b) {
+  const all = [COUNTER, SEC.svc.bench, ...PARTS.map(s => s.shelf)];
+  const steps = Math.ceil(dist(a, b) / 8);
+  for (let i = 1; i < steps; i++) {
+    const p = { x: a.x + (b.x - a.x) * i / steps, y: a.y + (b.y - a.y) * i / steps };
+    if (all.some(r => inRect(p, r, 10))) return true;
+  }
+  return false;
+}
+function route(from, to) {
+  if (!segmentBlocked(from, to)) return [{ x: to.x, y: to.y }];
+  const pts = [];
+  if (Math.abs(from.x - AISLE_X) > 6) pts.push({ x: AISLE_X, y: from.y });
+  pts.push({ x: AISLE_X, y: to.y }, { x: to.x, y: to.y });
+  return pts;
+}
+function walk(o, dt) {
+  if (!o.path.length) return true;
+  const tgt = o.path[0];
+  const dx = tgt.x - o.x, dy = tgt.y - o.y, d = Math.hypot(dx, dy);
+  const step = o.speed * dt;
+  if (d <= step) { o.x = tgt.x; o.y = tgt.y; o.path.shift(); }
+  else { o.x += dx / d * step; o.y += dy / d * step; o.face = dx < 0 ? -1 : 1; }
+  o.moving = true;
+  return !o.path.length;
+}
+
+// ---------- Customers ----------
+const SHIRTS = ['#ff6b6b', '#ffd166', '#06d6a0', '#118ab2', '#ef476f', '#8338ec', '#fb8500', '#3a86ff'];
+const SKINS = ['#f5d0a9', '#e0ac69', '#c68642', '#8d5524', '#ffdbac'];
+const HAIR = ['#2b1d0e', '#6b3e1b', '#e8c170', '#111', '#b5542b', '#999'];
+function spawnCustomer() {
+  const parts = unlockedParts();
+  const svcActive = customers.some(c => c.state === 'svc');
+  const wantsBuild = state.sec.svc.unlocked && !svcActive && Math.random() < 0.3;
+  const c = {
+    x: DOOR.x + (Math.random() * 30 - 15), y: H + 10, path: [], speed: 85 + Math.random() * 30,
+    shirt: SHIRTS[Math.floor(Math.random() * SHIRTS.length)],
+    skin: SKINS[Math.floor(Math.random() * SKINS.length)],
+    hair: HAIR[Math.floor(Math.random() * HAIR.length)],
+    wants: [], cart: [], idx: 0, timer: 0, patience: 14, state: 'shop', goingTo: null, scanned: 0, mood: null, face: 1,
+  };
+  if (wantsBuild) {
+    c.state = 'svc';
+    c.path = [{ x: c.x, y: DOOR.y - 20 }, ...route({ x: AISLE_X, y: DOOR.y - 20 }, SEC.svc.custSpot)];
+    c.patience = 45;
+  } else {
+    const n = 1 + Math.floor(Math.random() * Math.min(3, parts.length + 1));
+    for (let i = 0; i < n; i++) c.wants.push(parts[Math.floor(Math.random() * parts.length)].id);
+    c.path = [{ x: c.x, y: DOOR.y - 20 }];
+  }
+  customers.push(c);
+}
+function leave(c, mood) {
+  c.state = 'leave';
+  c.mood = mood;
+  c.moodT = 0;
+  c.path = [...route(c, { x: AISLE_X, y: DOOR.y - 10 }), { x: AISLE_X + (Math.random() * 20 - 10), y: H + 30 }];
+  if (mood === 'sad') sfx.sad();
+}
+function updateCustomer(c, dt) {
+  c.moving = false;
+  if (c.mood) c.moodT += dt;
+  const arrived = walk(c, dt);
+  if (!arrived) return;
+
+  if (c.state === 'shop') {
+    if (c.idx >= c.wants.length) {
+      if (c.cart.length) { c.state = 'queue'; queue.push(c); }
+      else leave(c, 'sad');
+      return;
+    }
+    const s = SEC[c.wants[c.idx]];
+    const spot = { x: s.front.x + (Math.random() * 120 - 60), y: s.front.y + (Math.random() * 10 - 5) };
+    if (c.goingTo !== c.idx) { c.goingTo = c.idx; c.timer = 0; c.path = route(c, spot); return; }
+    c.timer += dt;
+    if (c.timer < 0.6) return;
+    const st = state.sec[s.id];
+    if (st.stock > 0) {
+      st.stock--;
+      c.cart.push(s.id);
+      c.idx++;
+      c.waiting = false;
+    } else {
+      c.waiting = true;
+      c.patience -= dt;
+      if (c.patience <= 0) { c.idx++; c.patience = 10; c.waiting = false; }
+    }
+  } else if (c.state === 'queue') {
+    const i = queue.indexOf(c);
+    const slot = queueSlot(i);
+    if (dist(c, slot) > 2) { c.path = route(c, slot); return; }
+  } else if (c.state === 'svc') {
+    c.waiting = true;
+    c.patience -= dt;
+    if (c.patience <= 0 && buildProgress < 0.05) { c.waiting = false; leave(c, 'sad'); buildProgress = 0; }
+  } else if (c.state === 'leave') {
+    if (c.y > H + 20) c.remove = true;
+  }
+}
+
+// Checkout at the register
+function updateRegister(dt) {
+  const front = queue[0];
+  const playerHere = dist(state.player, REGISTER) < 36;
+  const scanTime = playerHere ? 0.28 : state.staff.cashier ? 0.6 : 0;
+  if (!front || !scanTime || dist(front, queueSlot(0)) > 4) { serveTimer = 0; return; }
+  serveTimer += dt;
+  if (serveTimer >= scanTime) {
+    serveTimer = 0;
+    front.scanned++;
+    sfx.scan();
+    if (front.scanned >= front.cart.length) {
+      const total = front.cart.reduce((sum, id) => sum + price(id), 0);
+      earn(total, REGISTER.x, REGISTER.y - 30);
+      sfx.cash();
+      state.served++;
+      queue.shift();
+      leave(front, 'happy');
+    }
+  }
+}
+
+// Building PCs at the Service Station
+function updateService(dt) {
+  if (!state.sec.svc.unlocked) return;
+  const c = customers.find(x => x.state === 'svc' && !x.path.length);
+  const playerHere = dist(state.player, SEC.svc.workPad) < 34;
+  const rate = playerHere ? 1 / 4 : state.staff.tech ? 1 / 8 : 0;
+  if (!c || !rate) return;
+  buildProgress += rate * dt;
+  if (Math.random() < dt * 6) fx.push({ type: 'spark', x: SEC.svc.bench.x + 30 + Math.random() * 60, y: SEC.svc.bench.y + 10, t: 0 });
+  if (buildProgress >= 1) {
+    buildProgress = 0;
+    state.built++;
+    earn(price('svc'), SEC.svc.custSpot.x, SEC.svc.custSpot.y - 40);
+    sfx.cash();
+    c.carryPC = true;
+    leave(c, 'happy');
+  }
+}
+
+// ---------- Player ----------
+const input = { x: 0, y: 0 };
+const PLAYER_R = 14;
+function updatePlayer(dt) {
+  const p = state.player;
+  let ix = input.x, iy = input.y;
+  if (keys.size) {
+    ix = (keys.has('ArrowRight') || keys.has('d') ? 1 : 0) - (keys.has('ArrowLeft') || keys.has('a') ? 1 : 0);
+    iy = (keys.has('ArrowDown') || keys.has('s') ? 1 : 0) - (keys.has('ArrowUp') || keys.has('w') ? 1 : 0);
+    const m = Math.hypot(ix, iy) || 1; ix /= m; iy /= m;
+  }
+  p.moving = Math.hypot(ix, iy) > 0.1;
+  if (p.moving) {
+    p.face = ix < -0.1 ? -1 : ix > 0.1 ? 1 : p.face || 1;
+    const sp = playerSpeed() * dt;
+    moveAxis(p, ix * sp, 0);
+    moveAxis(p, 0, iy * sp);
+  }
+  // Stockroom crates: pick up boxes
+  pickTimer += dt; dropTimer += dt;
+  for (const s of unlockedParts()) {
+    if (inRect(p, crateRect(s)) && state.carry.length < carryCap() && pickTimer > 0.13) {
+      state.carry.push(s.id); pickTimer = 0; sfx.pick();
+    }
+  }
+  // Shelves: drop matching boxes
+  for (const s of unlockedParts()) {
+    const st = state.sec[s.id];
+    const i = state.carry.lastIndexOf(s.id);
+    if (i >= 0 && st.stock < shelfCap(s.id) && inRect(p, s.shelf, 34) && dropTimer > 0.1) {
+      state.carry.splice(i, 1); st.stock++; dropTimer = 0; sfx.drop();
+    }
+  }
+  // Unlock pads: money flows in while you stand on them
+  for (const s of SECTIONS) {
+    const st = state.sec[s.id];
+    if (st.unlocked || !canUnlockNext(s.id)) continue;
+    if (inRect(p, padRect(s.front)) && state.money > 0) {
+      const amt = Math.min(state.money, s.unlock - st.paid, Math.max(25, s.unlock / 1.6) * dt);
+      state.money -= amt; st.paid += amt;
+      if (Math.random() < dt * 20) fx.push({ type: 'coin', x: p.x, y: p.y - 30, tx: s.front.x, ty: s.front.y, t: 0 });
+      if (st.paid >= s.unlock - 1e-6) unlockSection(s.id);
+    }
+  }
+}
+function moveAxis(p, dx, dy) {
+  const nx = Math.max(16 + PLAYER_R, Math.min(W - 16 - PLAYER_R, p.x + dx));
+  const ny = Math.max(16 + PLAYER_R, Math.min(H - 30, p.y + dy));
+  const probe = { x: nx, y: ny };
+  if (obstacles().some(r => inRect(probe, r, PLAYER_R - 2))) return;
+  p.x = nx; p.y = ny;
+}
+// Sections unlock in order
+function canUnlockNext(id) {
+  const i = SECTIONS.findIndex(s => s.id === id);
+  return SECTIONS.slice(0, i).every(s => state.sec[s.id].unlocked);
+}
+function unlockSection(id) {
+  const st = state.sec[id];
+  st.unlocked = true; st.paid = SEC[id].unlock;
+  if (SEC[id].shelf) st.stock = 3;
+  sfx.unlock(); confetti();
+  toast(`${SEC[id].icon} ${SEC[id].name} unlocked!`);
+  // Push the player off the new shelf if needed
+  const p = state.player;
+  if (SEC[id].shelf && inRect(p, SEC[id].shelf, PLAYER_R)) p.y = SEC[id].shelf.y + SEC[id].shelf.h + PLAYER_R + 4;
+  if (SEC[id].bench && inRect(p, SEC[id].bench, PLAYER_R)) p.y = SEC[id].bench.y + SEC[id].bench.h + PLAYER_R + 4;
+  save();
+}
+
+// ---------- Staff NPCs ----------
+function ensureNpcs() {
+  if (state.staff.cashier && !npcs.cashier) npcs.cashier = { x: REGISTER.x - 34, y: REGISTER.y, path: [], speed: 0, shirt: '#2b2350', skin: '#e0ac69', hair: '#111', cap: '#ffc83d', face: 1 };
+  if (state.staff.tech && !npcs.tech) npcs.tech = { x: SEC.svc.bench.x + 95, y: SEC.svc.bench.y - 22, path: [], speed: 0, shirt: '#ff6b9a', skin: '#c68642', hair: '#2b1d0e', cap: '#2b2350', face: 1 };
+  if (state.staff.stocker && !npcs.stocker) npcs.stocker = { x: AISLE_X, y: 180, path: [], speed: 125, shirt: '#06d6a0', skin: '#f5d0a9', hair: '#b5542b', cap: '#2b2350', carry: [], job: 'idle', timer: 0, face: 1 };
+}
+function updateStocker(dt) {
+  const n = npcs.stocker;
+  if (!n) return;
+  n.moving = false;
+  if (!walk(n, dt)) return;
+  n.timer += dt;
+  if (n.job === 'idle') {
+    if (n.timer < 0.5) return;
+    n.timer = 0;
+    const need = unlockedParts()
+      .map(s => ({ s, ratio: state.sec[s.id].stock / shelfCap(s.id) }))
+      .filter(o => o.ratio < 0.6)
+      .sort((a, b) => a.ratio - b.ratio)[0];
+    if (!need) return;
+    n.target = need.s.id; n.job = 'load';
+    n.path = route(n, need.s.crate);
+  } else if (n.job === 'load') {
+    const st = state.sec[n.target];
+    const want = Math.min(4, shelfCap(n.target) - st.stock);
+    if (n.carry.length < want && n.timer > 0.3) { n.carry.push(n.target); n.timer = 0; }
+    if (n.carry.length >= want) {
+      n.job = 'unload'; n.timer = 0;
+      const f = SEC[n.target].front;
+      n.path = route(n, { x: f.x + (Math.random() * 60 - 30), y: f.y - 8 });
+    }
+  } else if (n.job === 'unload') {
+    const st = state.sec[n.target];
+    if (n.timer > 0.25) {
+      n.timer = 0;
+      if (n.carry.length && st.stock < shelfCap(n.target)) { n.carry.pop(); st.stock++; }
+      else { n.carry = []; n.job = 'idle'; }
+    }
+  }
+}
+
+// ---------- Main update ----------
+function update(dt) {
+  updatePlayer(dt);
+  ensureNpcs();
+  updateStocker(dt);
+
+  spawnTimer -= dt;
+  const maxShoppers = Math.min(10, 2 + unlockedParts().length * 2);
+  if (spawnTimer <= 0) {
+    if (customers.length < maxShoppers) spawnCustomer();
+    spawnTimer = Math.max(1.4, 4.5 - 0.7 * (unlockedParts().length - 1)) * (0.7 + Math.random() * 0.6);
+  }
+  for (const c of customers) updateCustomer(c, dt);
+  customers = customers.filter(c => !c.remove);
+  updateRegister(dt);
+  updateService(dt);
+
+  for (const f of fx) f.t += dt;
+  fx = fx.filter(f => f.t < (f.type === 'text' ? 1.2 : 0.6));
+}
+
+// ---------- Rendering ----------
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+let DPR = 1, zoom = 1, cssW = 0, cssH = 0, cam = { x: 300, y: 600 };
+function resize() {
+  const r = canvas.getBoundingClientRect();
+  cssW = r.width; cssH = r.height;
+  DPR = Math.min(2, window.devicePixelRatio || 1);
+  canvas.width = Math.round(cssW * DPR);
+  canvas.height = Math.round(cssH * DPR);
+  zoom = Math.min(cssW / VIEW_UNITS, cssH / 700);
+  for (const k in emojiCache) delete emojiCache[k];
+}
+window.addEventListener('resize', resize);
+
+const emojiCache = {};
+function drawEmoji(ch, x, y, size) {
+  const px = Math.max(4, Math.round(size * zoom * DPR));
+  const key = ch + px;
+  let c = emojiCache[key];
+  if (!c) {
+    c = document.createElement('canvas');
+    c.width = c.height = Math.ceil(px * 1.4);
+    const g = c.getContext('2d');
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.font = `${px}px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif`;
+    g.fillText(ch, c.width / 2, c.height / 2 + px * 0.06);
+    emojiCache[key] = c;
+  }
+  ctx.drawImage(c, x - size * 0.7, y - size * 0.7, size * 1.4, size * 1.4);
+}
+function rr(x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+function text(str, x, y, size, color, weight = 700, align = 'center') {
+  ctx.font = `${weight} ${size}px Fredoka, ui-rounded, system-ui, sans-serif`;
+  ctx.textAlign = align; ctx.textBaseline = 'middle';
+  ctx.fillStyle = color;
+  ctx.fillText(str, x, y);
+}
+function outlinedText(str, x, y, size, color, stroke = '#2b2350') {
+  ctx.font = `700 ${size}px Fredoka, ui-rounded, system-ui, sans-serif`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.lineWidth = size / 4; ctx.strokeStyle = stroke; ctx.lineJoin = 'round';
+  ctx.strokeText(str, x, y);
+  ctx.fillStyle = color; ctx.fillText(str, x, y);
+}
+
+let time = 0;
+function render() {
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.fillStyle = '#1d1147';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // Camera follows the player, clamped to the store
+  const vw = cssW / zoom, vh = cssH / zoom;
+  const tx = vw >= W ? W / 2 : Math.max(vw / 2, Math.min(W - vw / 2, state.player.x));
+  const ty = vh >= H ? H / 2 : Math.max(vh / 2, Math.min(H - vh / 2 + 40, state.player.y));
+  cam.x += (tx - cam.x) * 0.15; cam.y += (ty - cam.y) * 0.15;
+  ctx.setTransform(zoom * DPR, 0, 0, zoom * DPR, (cssW / 2 - cam.x * zoom) * DPR, (cssH / 2 - cam.y * zoom) * DPR);
+
+  drawFloor();
+  drawStockroom();
+  drawCheckout();
+  for (const s of PARTS) drawShelf(s);
+  drawService();
+  drawUnlockPads();
+
+  // Characters, sorted by depth
+  const people = [...customers.map(c => ({ o: c, kind: 'cust' })), { o: state.player, kind: 'player' }];
+  for (const k in npcs) people.push({ o: npcs[k], kind: 'staff' });
+  people.sort((a, b) => a.o.y - b.o.y);
+  for (const p of people) drawPerson(p.o, p.kind);
+  for (const c of customers) drawBubble(c);
+
+  drawFx();
+  drawObjective();
+}
+
+function drawFloor() {
+  // walls
+  rr(0, 0, W, H, 18); ctx.fillStyle = '#3b2a7a'; ctx.fill();
+  // tiles
+  ctx.save();
+  rr(16, 16, W - 32, H - 32, 10); ctx.clip();
+  for (let y = 16; y < H; y += 40) for (let x = 16; x < W; x += 40) {
+    ctx.fillStyle = ((x + y) / 40) % 2 === 0 ? '#f4f1ff' : '#e9e4fb';
+    ctx.fillRect(x, y, 40, 40);
+  }
+  ctx.restore();
+  // door
+  ctx.fillStyle = '#8fd3ff';
+  ctx.fillRect(250, H - 18, 100, 18);
+  text('ENTRANCE', 300, H - 9, 11, '#1d4e74');
+  // entrance mat
+  rr(255, H - 70, 90, 46, 8); ctx.fillStyle = '#d8d0f5'; ctx.fill();
+}
+
+function drawStockroom() {
+  rr(16, 16, W - 32, 150, 10); ctx.fillStyle = '#d9cfa8'; ctx.fill();
+  ctx.strokeStyle = '#b9ab78'; ctx.lineWidth = 3;
+  ctx.setLineDash([10, 8]); ctx.beginPath(); ctx.moveTo(16, 166); ctx.lineTo(W - 16, 166); ctx.stroke(); ctx.setLineDash([]);
+  text('STOCKROOM', 300, 32, 13, '#7a6a35');
+  for (const s of PARTS) {
+    const r = crateRect(s);
+    const on = state.sec[s.id].unlocked;
+    ctx.globalAlpha = on ? 1 : 0.3;
+    rr(r.x, r.y + 6, r.w, r.h, 10); ctx.fillStyle = '#8a6a2f'; ctx.fill();
+    rr(r.x, r.y, r.w, r.h, 10); ctx.fillStyle = '#c99a4a'; ctx.fill();
+    ctx.strokeStyle = '#a77c34'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(r.x + 6, r.y + r.h / 2); ctx.lineTo(r.x + r.w - 6, r.y + r.h / 2); ctx.stroke();
+    drawEmoji(on ? s.icon : '🔒', s.crate.x, s.crate.y - 4, 24);
+    text(s.items[0].toUpperCase() + s.items.slice(1), s.crate.x, r.y + r.h + 16, 11, '#7a6a35');
+    ctx.globalAlpha = 1;
+  }
+}
+
+function drawShelf(s) {
+  const st = state.sec[s.id];
+  const r = s.shelf;
+  if (!st.unlocked) {
+    ctx.setLineDash([8, 6]); ctx.lineWidth = 3; ctx.strokeStyle = '#b8aee0';
+    rr(r.x, r.y, r.w, r.h, 10); ctx.stroke(); ctx.setLineDash([]);
+    text(s.name, r.x + r.w / 2, r.y + r.h / 2, 14, '#a59bd0');
+    return;
+  }
+  // drop zone hint when carrying this item
+  if (state.carry.includes(s.id)) {
+    ctx.globalAlpha = 0.25 + 0.15 * Math.sin(time * 6);
+    rr(r.x - 30, r.y - 30, r.w + 60, r.h + 60, 18); ctx.fillStyle = s.color; ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+  rr(r.x, r.y + 8, r.w, r.h, 10); ctx.fillStyle = '#5a4a9a'; ctx.fill();
+  rr(r.x, r.y, r.w, r.h, 10); ctx.fillStyle = '#8b7ad6'; ctx.fill();
+  rr(r.x + 5, r.y + 5, r.w - 10, r.h - 10, 7); ctx.fillStyle = '#6d5cc0'; ctx.fill();
+  // items on the shelf
+  const cap = shelfCap(s.id);
+  const per = Math.min(10, cap);
+  const step = (r.w - 24) / (per - 1 || 1);
+  for (let i = 0; i < st.stock; i++) {
+    const col = i % per, row = Math.floor(i / per);
+    drawEmoji(s.icon, r.x + 12 + col * step, r.y + r.h / 2 - row * 8, 17);
+  }
+  // sign
+  const label = `${s.name} · ${money$(price(s.id))}`;
+  rr(r.x + r.w / 2 - 78, r.y - 24, 156, 20, 8); ctx.fillStyle = s.color; ctx.fill();
+  text(label, r.x + r.w / 2, r.y - 14, 11, '#fff');
+  text(`${st.stock}/${cap}`, r.x + r.w - 4, r.y + r.h + 16, 11, st.stock ? '#6b6390' : '#ff5a5f', 700, 'right');
+  if (!st.stock) outlinedText('EMPTY!', r.x + r.w / 2, r.y + r.h / 2, 15, '#ff5a5f', '#fff');
+}
+
+function drawCheckout() {
+  const r = COUNTER;
+  // register pad (where you stand)
+  const here = dist(state.player, REGISTER) < 36;
+  ctx.beginPath(); ctx.arc(REGISTER.x, REGISTER.y, 28, 0, Math.PI * 2);
+  ctx.fillStyle = here ? 'rgba(46,204,113,.45)' : 'rgba(255,200,61,.45)'; ctx.fill();
+  ctx.setLineDash([6, 5]); ctx.lineWidth = 3; ctx.strokeStyle = here ? '#1e9e55' : '#d99a00'; ctx.stroke(); ctx.setLineDash([]);
+  rr(r.x, r.y + 8, r.w, r.h, 10); ctx.fillStyle = '#7a4b1e'; ctx.fill();
+  rr(r.x, r.y, r.w, r.h, 10); ctx.fillStyle = '#b8743a'; ctx.fill();
+  rr(r.x + 90, r.y + 6, 44, 26, 6); ctx.fillStyle = '#2b2350'; ctx.fill();
+  rr(r.x + 95, r.y + 10, 34, 12, 3); ctx.fillStyle = '#7ef0a8'; ctx.fill();
+  text('CHECKOUT', r.x + 46, r.y + r.h / 2, 12, '#fff');
+  // queue markers
+  for (let i = 0; i < 5; i++) {
+    const q = queueSlot(i);
+    ctx.beginPath(); ctx.arc(q.x, q.y + 12, 6, 0, Math.PI * 2); ctx.fillStyle = '#d8d0f5'; ctx.fill();
+  }
+  if (queue.length && !here && !state.staff.cashier) outlinedText('Customers waiting!', REGISTER.x, REGISTER.y - 42, 12, '#ffc83d');
+  // scan progress
+  const f = queue[0];
+  if (f && f.cart.length && (here || state.staff.cashier)) {
+    const pct = f.scanned / f.cart.length;
+    rr(r.x + 20, r.y + r.h + 14, 120, 8, 4); ctx.fillStyle = '#ddd6f7'; ctx.fill();
+    rr(r.x + 20, r.y + r.h + 14, 120 * pct, 8, 4); ctx.fillStyle = '#2ecc71'; ctx.fill();
+  }
+}
+
+function drawService() {
+  const s = SEC.svc, st = state.sec.svc, r = s.bench;
+  if (!st.unlocked) {
+    ctx.setLineDash([8, 6]); ctx.lineWidth = 3; ctx.strokeStyle = '#b8aee0';
+    rr(r.x, r.y, r.w, r.h, 10); ctx.stroke(); ctx.setLineDash([]);
+    text('Service Station', r.x + r.w / 2, r.y + r.h / 2, 14, '#a59bd0');
+    return;
+  }
+  const here = dist(state.player, s.workPad) < 34;
+  ctx.beginPath(); ctx.arc(s.workPad.x, s.workPad.y, 26, 0, Math.PI * 2);
+  ctx.fillStyle = here ? 'rgba(46,204,113,.45)' : 'rgba(255,107,154,.35)'; ctx.fill();
+  ctx.setLineDash([6, 5]); ctx.lineWidth = 3; ctx.strokeStyle = here ? '#1e9e55' : '#ff6b9a'; ctx.stroke(); ctx.setLineDash([]);
+  rr(r.x, r.y + 8, r.w, r.h, 10); ctx.fillStyle = '#9a3d5c'; ctx.fill();
+  rr(r.x, r.y, r.w, r.h, 10); ctx.fillStyle = '#ff8fb1'; ctx.fill();
+  rr(r.x + r.w / 2 - 84, r.y - 24, 168, 20, 8); ctx.fillStyle = s.color; ctx.fill();
+  text(`Service Station · ${money$(price('svc'))}/build`, r.x + r.w / 2, r.y - 14, 11, '#fff');
+  const waiting = customers.find(c => c.state === 'svc' && !c.path.length);
+  drawEmoji(waiting ? '🖥️' : '🧰', r.x + 60, r.y + r.h / 2, 22);
+  drawEmoji('🔧', r.x + 120, r.y + r.h / 2, 18);
+  if (waiting) {
+    rr(r.x + 20, r.y + r.h + 46, 150, 10, 5); ctx.fillStyle = '#ddd6f7'; ctx.fill();
+    rr(r.x + 20, r.y + r.h + 46, 150 * buildProgress, 10, 5); ctx.fillStyle = '#ff6b9a'; ctx.fill();
+    if (!here && !state.staff.tech) outlinedText('Build a PC here!', s.workPad.x, s.workPad.y + 40, 12, '#ffc83d');
+  }
+}
+
+function drawUnlockPads() {
+  for (const s of SECTIONS) {
+    const st = state.sec[s.id];
+    if (st.unlocked || !canUnlockNext(s.id)) continue;
+    const r = padRect(s.front);
+    const pct = st.paid / s.unlock;
+    const pulse = 1 + 0.04 * Math.sin(time * 5);
+    ctx.save();
+    ctx.translate(s.front.x, s.front.y); ctx.scale(pulse, pulse); ctx.translate(-s.front.x, -s.front.y);
+    rr(r.x, r.y + 5, r.w, r.h, 12); ctx.fillStyle = '#d99a00'; ctx.fill();
+    rr(r.x, r.y, r.w, r.h, 12); ctx.fillStyle = '#ffe17a'; ctx.fill();
+    ctx.save(); rr(r.x, r.y, r.w, r.h, 12); ctx.clip();
+    ctx.fillStyle = '#2ecc71'; ctx.fillRect(r.x, r.y, r.w * pct, r.h); ctx.restore();
+    drawEmoji(s.icon, r.x + 18, r.y + r.h / 2, 18);
+    text('UNLOCK', r.x + r.w / 2 + 10, r.y + 18, 11, '#6b4200');
+    text(money$(Math.ceil(s.unlock - st.paid)), r.x + r.w / 2 + 10, r.y + 36, 15, '#6b4200');
+    ctx.restore();
+  }
+}
+
+function drawPerson(o, kind) {
+  const bob = o.moving ? Math.sin(time * 14 + (o.x + o.y) * 0.05) * 2 : 0;
+  const x = o.x, y = o.y;
+  // shadow
+  ctx.beginPath(); ctx.ellipse(x, y + 4, 14, 6, 0, 0, Math.PI * 2); ctx.fillStyle = 'rgba(0,0,0,.18)'; ctx.fill();
+  // legs
+  const step = o.moving ? Math.sin(time * 14 + x * 0.1) * 4 : 0;
+  ctx.fillStyle = '#2b2350';
+  rr(x - 8, y - 8 + step * 0.3, 6, 12, 3); ctx.fill();
+  rr(x + 2, y - 8 - step * 0.3, 6, 12, 3); ctx.fill();
+  // body
+  const shirt = kind === 'player' ? '#3a86ff' : o.shirt;
+  rr(x - 12, y - 28 + bob, 24, 24, 9); ctx.fillStyle = shirt; ctx.fill();
+  if (kind !== 'cust') { rr(x - 7, y - 24 + bob, 14, 16, 4); ctx.fillStyle = kind === 'player' ? '#ffc83d' : 'rgba(255,255,255,.6)'; ctx.fill(); }
+  // head
+  const hy = y - 38 + bob;
+  ctx.beginPath(); ctx.arc(x, hy, 11, 0, Math.PI * 2); ctx.fillStyle = o.skin || '#f5d0a9'; ctx.fill();
+  // hair or cap
+  ctx.beginPath(); ctx.arc(x, hy - 3, 11, Math.PI, 0); ctx.fillStyle = kind === 'player' ? '#ff5a5f' : (o.cap || o.hair); ctx.fill();
+  if (kind !== 'cust') { rr(x + (o.face || 1) * 2 - 8 + (o.face || 1) * 6, hy - 6, 14, 4, 2); ctx.fill(); }
+  // eyes
+  ctx.fillStyle = '#2b2350';
+  const ex = (o.face || 1) * 2;
+  ctx.beginPath(); ctx.arc(x - 4 + ex, hy + 1, 1.8, 0, Math.PI * 2); ctx.arc(x + 4 + ex, hy + 1, 1.8, 0, Math.PI * 2); ctx.fill();
+  // carried boxes
+  const stack = kind === 'player' ? state.carry : (o.carry || []);
+  for (let i = 0; i < stack.length; i++) {
+    const by = y - 58 + bob - i * 12;
+    rr(x - 11, by - 6, 22, 13, 3); ctx.fillStyle = SEC[stack[i]].color; ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,.25)'; ctx.lineWidth = 1.5; ctx.stroke();
+  }
+  if (kind === 'player' && stack.length >= carryCap()) outlinedText('FULL', x, y - 66 - stack.length * 12, 11, '#fff');
+  if (o.carryPC) drawEmoji('🖥️', x + 14, y - 20, 16);
+  // shopping bag
+  if (kind === 'cust' && o.cart.length && o.state !== 'shop') drawEmoji('🛍️', x + 14, y - 14 + bob, 14);
+  if (kind === 'player') outlinedText('YOU', x, y + 14, 10, '#fff', '#3a86ff');
+}
+
+function drawBubble(c) {
+  let icon = null, red = false;
+  if (c.mood && c.moodT < 1.5) icon = c.mood === 'happy' ? '😄' : '😠';
+  else if (c.state === 'shop' && c.idx < c.wants.length) { icon = SEC[c.wants[c.idx]].icon; red = c.waiting; }
+  else if (c.state === 'svc') { icon = '🛠️'; }
+  else if (c.state === 'queue') icon = '💳';
+  if (!icon) return;
+  const x = c.x + 16, y = c.y - 62;
+  ctx.beginPath(); ctx.arc(x, y, 14, 0, Math.PI * 2);
+  ctx.fillStyle = red ? '#ffe1e2' : '#fff'; ctx.fill();
+  ctx.lineWidth = 2; ctx.strokeStyle = red ? '#ff5a5f' : '#d9d2f5'; ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(x - 8, y + 10); ctx.lineTo(x - 14, y + 18); ctx.lineTo(x - 2, y + 13); ctx.fill();
+  drawEmoji(icon, x, y, 16);
+  if (red) outlinedText('!', x + 14, y - 12, 14, '#ff5a5f', '#fff');
+}
+
+function drawFx() {
+  for (const f of fx) {
+    if (f.type === 'text') {
+      ctx.globalAlpha = Math.max(0, 1 - f.t / 1.2);
+      outlinedText(f.text, f.x, f.y - f.t * 40, 18, '#7ef0a8', '#1e5e36');
+    } else if (f.type === 'coin') {
+      const k = f.t / 0.6;
+      drawEmoji('🪙', f.x + (f.tx - f.x) * k, f.y + (f.ty - f.y) * k - Math.sin(k * Math.PI) * 30, 14);
+    } else if (f.type === 'spark') {
+      ctx.globalAlpha = 1 - f.t / 0.6;
+      drawEmoji('✨', f.x, f.y - f.t * 30, 12);
+    }
+    ctx.globalAlpha = 1;
+  }
+}
+
+// ---------- Objective arrow (tutorial help) ----------
+function objective() {
+  const p = state.player;
+  const atReg = dist(p, REGISTER) < 36;
+  const carried = state.carry[0];
+  if (carried) {
+    const s = SEC[carried];
+    if (state.sec[carried].stock < shelfCap(carried)) return { pt: s.front, text: `Put the ${s.items} on the ${s.name} shelf` };
+  }
+  if (queue.length && !state.staff.cashier) return atReg ? { pt: REGISTER, text: 'Stay here to check out the line' } : { pt: REGISTER, text: 'Go to the register to check out customers' };
+  const svcWaiting = customers.some(c => c.state === 'svc' && !c.path.length);
+  if (svcWaiting && !state.staff.tech && dist(p, SEC.svc.workPad) > 34) return { pt: SEC.svc.workPad, text: 'A customer wants a custom PC. Go build it!' };
+  const next = SECTIONS.find(s => !state.sec[s.id].unlocked);
+  if (next && state.money >= next.unlock - state.sec[next.id].paid) return { pt: next.front, text: `Stand on the pad to unlock ${next.name}` };
+  const low = unlockedParts().find(s => state.sec[s.id].stock === 0) || (state.carry.length === 0 && unlockedParts().find(s => state.sec[s.id].stock < 2));
+  if (low && state.carry.length < carryCap()) return { pt: low.crate, text: `Grab ${low.items} from the stockroom` };
+  return null;
+}
+let currentObjective = null;
+function drawObjective() {
+  const o = currentObjective;
+  if (!o) return;
+  const p = state.player;
+  const d = dist(p, o.pt);
+  // pulsing ring on the target
+  ctx.beginPath(); ctx.arc(o.pt.x, o.pt.y, 30 + 6 * Math.sin(time * 6), 0, Math.PI * 2);
+  ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(255,200,61,.9)'; ctx.stroke();
+  if (d < 50) return;
+  const a = Math.atan2(o.pt.y - p.y, o.pt.x - p.x);
+  const ax = p.x + Math.cos(a) * 42, ay = p.y - 14 + Math.sin(a) * 42;
+  ctx.save(); ctx.translate(ax, ay); ctx.rotate(a);
+  ctx.beginPath(); ctx.moveTo(14, 0); ctx.lineTo(-8, -11); ctx.lineTo(-3, 0); ctx.lineTo(-8, 11); ctx.closePath();
+  ctx.fillStyle = '#ffc83d'; ctx.fill(); ctx.lineWidth = 3; ctx.strokeStyle = '#6b4200'; ctx.stroke();
+  ctx.restore();
+}
+
+// ---------- Joystick ----------
+const joy = { active: false, id: null, ox: 0, oy: 0, x: 0, y: 0 };
+const JOY_R = 55;
+const joyBase = document.getElementById('joyBase'), joyKnob = document.getElementById('joyKnob');
+canvas.addEventListener('pointerdown', e => {
+  if (joy.active) return;
+  joy.active = true; joy.id = e.pointerId;
+  joy.ox = joy.x = e.clientX; joy.oy = joy.y = e.clientY;
+  canvas.setPointerCapture(e.pointerId);
+  joyBase.style.left = e.clientX + 'px'; joyBase.style.top = e.clientY + 'px';
+  joyBase.classList.add('show');
+  moveJoy(e);
+  if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+});
+canvas.addEventListener('pointermove', e => { if (joy.active && e.pointerId === joy.id) moveJoy(e); });
+function endJoy(e) {
+  if (!joy.active || e.pointerId !== joy.id) return;
+  joy.active = false; input.x = input.y = 0;
+  joyBase.classList.remove('show');
+}
+canvas.addEventListener('pointerup', endJoy);
+canvas.addEventListener('pointercancel', endJoy);
+function moveJoy(e) {
+  let dx = e.clientX - joy.ox, dy = e.clientY - joy.oy;
+  const d = Math.hypot(dx, dy);
+  if (d > JOY_R) { dx = dx / d * JOY_R; dy = dy / d * JOY_R; }
+  joyKnob.style.transform = `translate(${dx}px, ${dy}px)`;
+  const mag = Math.min(1, d / JOY_R);
+  input.x = d > 6 ? dx / (Math.hypot(dx, dy) || 1) * mag : 0;
+  input.y = d > 6 ? dy / (Math.hypot(dx, dy) || 1) * mag : 0;
+}
+const keys = new Set();
+window.addEventListener('keydown', e => { keys.add(e.key.length === 1 ? e.key.toLowerCase() : e.key); });
+window.addEventListener('keyup', e => { keys.delete(e.key.length === 1 ? e.key.toLowerCase() : e.key); });
+window.addEventListener('blur', () => keys.clear());
+
+// ---------- HUD ----------
+const $ = sel => document.querySelector(sel);
+let lastMoneyText = '';
+function bumpMoney() { const m = $('#money'); m.classList.remove('bump'); void m.offsetWidth; m.classList.add('bump'); }
+let hudTimer = 0;
+function updateHud(dt) {
+  const mt = fmt(state.money);
+  if (mt !== lastMoneyText) { $('#moneyVal').textContent = mt; lastMoneyText = mt; }
+  hudTimer += dt;
+  if (hudTimer < 0.25) return;
+  hudTimer = 0;
+  $('#incomeVal').textContent = money$(state.rate * 60);
+  $('#storeName').textContent = state.storeName;
+  currentObjective = state.lifetime < 4000 || (queue.length && !state.staff.cashier) ? objective() : null;
+  const hint = $('#hint');
+  hint.textContent = currentObjective ? currentObjective.text : '';
+  hint.classList.toggle('show', !!currentObjective);
+  $('#upgradeBtn').classList.toggle('alert', anyAffordable());
+  if (!$('#modal').classList.contains('hidden')) {
+    document.querySelectorAll('#modalCard [data-cost]').forEach(b => b.classList.toggle('disabled', state.money < +b.dataset.cost));
+  }
+}
+let rateTimer = 0;
+function updateRate(dt) {
+  rateTimer += dt;
+  if (rateTimer >= 1) {
+    state.rate = state.rate * 0.95 + (rateBucket / rateTimer) * 0.05;
+    rateBucket = 0; rateTimer = 0;
+  }
+}
+
+// ---------- Upgrades panel ----------
+function anyAffordable() {
+  for (const s of SECTIONS) if (state.sec[s.id].unlocked && state.money >= levelCost(s.id)) return true;
+  for (const k in STAFF) if (!state.staff[k] && staffAvailable(k) && state.money >= STAFF[k].cost) return true;
+  if (state.speedLv < MAX_PLAYER_LV && state.money >= speedCost()) return true;
+  if (state.carryLv < MAX_PLAYER_LV && state.money >= carryCost()) return true;
+  return false;
+}
+function staffAvailable(k) { return k !== 'tech' || state.sec.svc.unlocked; }
+function showUpgrades() {
+  let html = `<div class="sheet-head"><h2>Upgrades</h2><button class="icon-btn small" data-act="close" aria-label="Close">✕</button></div>`;
+  html += `<div class="group">Sections <span>Level up to raise prices</span></div>`;
+  for (const s of SECTIONS) {
+    const st = state.sec[s.id];
+    if (!st.unlocked) {
+      html += `<div class="item locked"><div class="avatar" style="--c:${s.color}">🔒</div><div class="info"><div class="title">${s.name}</div><div class="desc">Unlock on the store floor for ${money$(s.unlock)}</div></div></div>`;
+      continue;
+    }
+    const next = st.level + 1;
+    const nm = MILESTONES.find(m => m > st.level);
+    const cur = price(s.id);
+    st.level++; const after = price(s.id); st.level--;
+    html += `<div class="item"><div class="avatar" style="--c:${s.color}">${s.icon}</div>
+      <div class="info"><div class="title">${s.name} <small>Lv ${st.level}</small></div>
+      <div class="desc">${s.item}: ${money$(cur)} → <b>${money$(after)}</b>${nm ? ` · x2 at Lv ${nm}` : ''}${s.shelf ? ` · holds ${shelfCap(s.id)}` : ''}</div></div>
+      <button class="btn green" data-act="level" data-id="${s.id}" data-cost="${levelCost(s.id)}">Lv ${next}<small>${money$(levelCost(s.id))}</small></button></div>`;
+  }
+  html += `<div class="group">Staff <span>They work while you play</span></div>`;
+  for (const k in STAFF) {
+    const s = STAFF[k];
+    const avail = staffAvailable(k);
+    html += `<div class="item ${state.staff[k] ? 'done' : ''}"><div class="avatar" style="--c:#ece8fb">${s.icon}</div>
+      <div class="info"><div class="title">${s.name}</div><div class="desc">${avail ? s.desc : 'Unlock the Service Station first'}</div></div>
+      ${state.staff[k] ? '<button class="btn owned" disabled>Hired ✓</button>'
+        : avail ? `<button class="btn green" data-act="hire" data-id="${k}" data-cost="${s.cost}">Hire<small>${money$(s.cost)}</small></button>` : ''}</div>`;
+  }
+  html += `<div class="group">You</div>`;
+  html += playerRow('speed', '👟', 'Running Shoes', `Walk speed Lv ${state.speedLv}/${MAX_PLAYER_LV}`, state.speedLv, speedCost());
+  html += playerRow('carry', '📦', 'Bigger Arms', `Carry ${carryCap()} boxes${state.carryLv < MAX_PLAYER_LV ? ` → ${carryCap() + 2}` : ''}`, state.carryLv, carryCost());
+  showModal(html, true);
+  updateHud(1);
+}
+function playerRow(act, icon, title, desc, lv, cost) {
+  return `<div class="item"><div class="avatar" style="--c:#dff1ff">${icon}</div>
+    <div class="info"><div class="title">${title}</div><div class="desc">${desc}</div></div>
+    ${lv >= MAX_PLAYER_LV ? '<button class="btn owned" disabled>MAX</button>' : `<button class="btn green" data-act="${act}" data-cost="${cost}">Buy<small>${money$(cost)}</small></button>`}</div>`;
 }
 function spend(amount) {
   if (state.money + 1e-9 < amount) return false;
@@ -244,417 +898,7 @@ function spend(amount) {
   return true;
 }
 
-function levelUp(id, n) {
-  const st = state.sections[id];
-  const before = st.level;
-  n = n || buyCount(id);
-  const cost = costFor(id, n);
-  if (!spend(cost)) return false;
-  st.level += n;
-  const tierBefore = before > 0 ? currentTierAt(id, before) : null;
-  if (before === 0) {
-    sfx.unlock();
-    toast(`${SEC[id].icon} ${SEC[id].name} unlocked!`);
-    confetti();
-    render();
-  } else {
-    sfx.buy();
-    const gained = MILESTONES.filter(m => before < m && st.level >= m);
-    if (gained.length) {
-      const speed = gained.some(m => SPEED_MILESTONES.has(m));
-      toast(`🏆 ${SEC[id].name} Lv ${gained[gained.length - 1]}! Profit x${Math.pow(2, gained.length)}${speed ? ' & speed x2' : ''}`);
-    }
-    const tierNow = currentTier(id);
-    if (tierBefore !== tierNow) toast(`✨ Now selling ${tierNow}!`);
-  }
-  return true;
-}
-function currentTierAt(id, lvl) {
-  let t = SEC[id].tiers[0][1];
-  for (const [l, n] of SEC[id].tiers) if (lvl >= l) t = n;
-  return t;
-}
-
-function startSale(id) {
-  const st = state.sections[id];
-  if (st.level <= 0 || st.running) return;
-  st.running = true;
-  sfx.coin();
-}
-
-function hireManager(id) {
-  const st = state.sections[id];
-  if (st.manager || st.level <= 0) return;
-  if (!spend(SEC[id].manager.cost)) return;
-  st.manager = true;
-  st.running = true;
-  sfx.unlock();
-  toast(`${SEC[id].manager.icon} ${SEC[id].manager.name} now runs ${SEC[id].name}!`);
-  render();
-}
-
-function buyUpgrade(uid) {
-  const u = UPGRADES.find(x => x.id === uid);
-  if (!u || state.upgrades.includes(uid)) return;
-  if (!spend(u.cost)) return;
-  state.upgrades.push(uid);
-  sfx.unlock();
-  toast(`🚀 ${u.name}: ${u.target === 'all' ? 'All sections' : SEC[u.target].name} profit x${u.mult}`);
-  render();
-}
-
-// ---------- Franchise (prestige) ----------
-function totalStarsEarned() { return Math.floor(10 * Math.sqrt(state.lifetime / 1e9)); }
-function claimableStars() { return Math.max(0, totalStarsEarned() - state.starsClaimed); }
-function franchise() {
-  const gain = claimableStars();
-  if (gain <= 0) return;
-  const keep = {
-    lifetime: state.lifetime, stars: state.stars + gain, starsClaimed: state.starsClaimed + gain,
-    franchises: state.franchises + 1, buildsDone: state.buildsDone, storeName: state.storeName, sound: state.sound,
-  };
-  state = freshRun(keep);
-  save();
-  closeModal();
-  tab = 'store';
-  render();
-  confetti();
-  toast(`⭐ New store opened! +${gain} Stars (profit x${starMult().toFixed(2)})`);
-}
-
-// ---------- Build Station mini-game ----------
-function buildReward() {
-  return Math.max(revenue('svc') * 4, incomePerSec(false) * 45);
-}
-const singular = n => n.replace(/([^si])s$/, '$1');
-function newBuild() {
-  const cust = CUSTOMERS[Math.floor(Math.random() * CUSTOMERS.length)];
-  const wants = [];
-  const tray = [];
-  for (const sid of PART_SECTIONS) {
-    const tiers = SEC[sid].tiers;
-    const pick = Math.floor(Math.random() * tiers.length);
-    let decoy = Math.floor(Math.random() * (tiers.length - 1));
-    if (decoy >= pick) decoy++;
-    const want = { key: `${sid}:${pick}`, sid, name: singular(tiers[pick][1]) };
-    wants.push(want);
-    tray.push(want, { key: `${sid}:${decoy}`, sid, name: singular(tiers[decoy][1]) });
-  }
-  for (let i = tray.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [tray[i], tray[j]] = [tray[j], tray[i]]; }
-  state.build = { face: cust.face, name: cust.name, line: cust.line, wants, tray, picked: [], mistakes: 0, reward: buildReward() };
-}
-function pickPart(idx, el) {
-  const b = state.build;
-  if (!b) return;
-  const part = b.tray[idx];
-  if (b.picked.includes(part.key)) return;
-  if (b.wants.some(w => w.key === part.key)) {
-    b.picked.push(part.key);
-    sfx.good();
-    if (b.picked.length === b.wants.length) completeBuild();
-    else render();
-  } else {
-    b.mistakes++;
-    sfx.wrong();
-    if (el) { el.classList.remove('wrong'); void el.offsetWidth; el.classList.add('wrong'); }
-    const rewardEl = document.getElementById('buildReward');
-    if (rewardEl) rewardEl.textContent = rewardText();
-  }
-}
-function rewardText() {
-  const b = state.build;
-  const pct = Math.max(0.4, 1 - b.mistakes * 0.15);
-  return `Reward: ${money$(b.reward * pct)}${b.mistakes ? ` (−${Math.round((1 - pct) * 100)}% for mistakes)` : ''}`;
-}
-function completeBuild() {
-  const b = state.build;
-  const pay = b.reward * Math.max(0.4, 1 - b.mistakes * 0.15);
-  earn(pay);
-  state.buildsDone++;
-  state.build = null;
-  state.nextBuildAt = Date.now() + (state.sections.svc.manager ? 8000 : 15000);
-  sfx.unlock();
-  confetti();
-  toast(`${b.face} ${b.name} loved the build! +${money$(pay)}`);
-  render();
-}
-
-// ---------- Game loop ----------
-let lastFrame = performance.now();
-const floatAcc = {};   // accumulate floating text for very fast sections
-function update(dt) {
-  for (const s of SECTIONS) {
-    const st = state.sections[s.id];
-    if (st.level <= 0) continue;
-    if (st.manager) st.running = true;
-    if (!st.running) continue;
-    const t = cycleTime(s.id);
-    st.progress += dt / t;
-    if (st.progress >= 1) {
-      const cycles = st.manager ? Math.floor(st.progress) : 1;
-      const amt = revenue(s.id) * cycles;
-      earn(amt);
-      st.progress = st.manager ? st.progress - cycles : 0;
-      if (!st.manager) st.running = false;
-      floatAcc[s.id] = (floatAcc[s.id] || 0) + amt;
-    }
-  }
-  // Build station customers
-  if (state.sections.svc.level > 0 && !state.build && Date.now() >= state.nextBuildAt) {
-    newBuild();
-    if (tab === 'store') render();
-    toast('🛎️ A customer wants a custom PC built!');
-  }
-}
-
-let lastFloat = 0, lastSave = Date.now(), lastAlerts = 0;
-function frame(now) {
-  const dt = Math.min(1, (now - lastFrame) / 1000);
-  lastFrame = now;
-  update(dt);
-  refresh();
-  if (now - lastFloat > 450) { flushFloats(); lastFloat = now; }
-  if (now - lastAlerts > 500) { updateAlerts(); lastAlerts = now; }
-  if (Date.now() - lastSave > 5000) { save(); lastSave = Date.now(); }
-  requestAnimationFrame(frame);
-}
-
-function applyOffline() {
-  const away = Math.min(OFFLINE_CAP_SECONDS, (Date.now() - (state.lastSeen || Date.now())) / 1000);
-  state.lastSeen = Date.now();
-  if (away < 30) return;
-  const earned = incomePerSec(true) * away;
-  if (earned <= 0) return;
-  earn(earned);
-  showModal(`
-    <div class="emoji">🌙</div>
-    <h2>Welcome back!</h2>
-    <p>Your managers kept the store running for ${fmtTime(away)}.</p>
-    <div style="font-size:30px;font-weight:700;color:var(--green-dark)">+${money$(earned)}</div>
-    <button class="btn green" data-act="close">Collect</button>`);
-}
-
-// ---------- Rendering ----------
-const $ = sel => document.querySelector(sel);
-const screen = $('#screen');
-let refs = {};
-
-function render() {
-  refs = {};
-  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
-  $('#storeName').textContent = state.storeName;
-  $('#buyModeBtn').textContent = 'x' + BUY_MODES[state.buyMode];
-  $('#buyModeBtn').style.visibility = tab === 'store' ? 'visible' : 'hidden';
-  if (tab === 'store') renderStore();
-  else if (tab === 'managers') renderManagers();
-  else if (tab === 'upgrades') renderUpgrades();
-  else renderFranchise();
-  refresh(true);
-}
-
-function renderStore() {
-  let html = '';
-  let shownLocked = false;
-  for (const s of SECTIONS) {
-    const st = state.sections[s.id];
-    if (st.level > 0) {
-      html += `
-      <div class="card" style="--c:${s.color}" id="card-${s.id}">
-        ${st.manager ? `<div class="mgr-tag">${s.manager.icon} AUTO</div>` : ''}
-        <button class="sec-icon" data-act="sell" data-id="${s.id}" aria-label="Sell ${s.name}">
-          <svg class="ring" viewBox="0 0 94 94"><circle class="bg" cx="47" cy="47" r="44"/><circle class="fg" cx="47" cy="47" r="44" stroke-dasharray="276.5" stroke-dashoffset="276.5"/></svg>
-          ${s.icon}<span class="lvl">Lv 0</span>
-        </button>
-        <div>
-          <div class="sec-head"><div class="sec-name">${s.name}</div><div class="sec-price"></div></div>
-          <div class="sec-product"></div>
-        </div>
-        <div class="bar"><div class="fill"></div><div class="bar-text"><span class="bar-money"></span><span class="bar-time"></span></div></div>
-        <div class="row">
-          <button class="btn lvlbtn" data-act="level" data-id="${s.id}"><span class="lvl-label">Level Up</span><small class="lvl-cost"></small></button>
-        </div>
-      </div>`;
-    } else if (!shownLocked) {
-      shownLocked = true;   // only show the next locked section, idle-game style
-      html += `
-      <div class="card locked" style="--c:${s.color}" id="card-${s.id}">
-        <div class="sec-icon">${s.icon}</div>
-        <div>
-          <div class="sec-name">🔒 ${s.name}</div>
-          <div class="lock-text">Unlock to start selling ${s.tiers[0][1]}</div>
-        </div>
-        <div class="lock-text">Earns ${money$(s.baseRevenue)} every ${s.time}s</div>
-        <div class="row"><button class="btn lvlbtn" data-act="unlock" data-id="${s.id}">Unlock<small>${money$(s.baseCost)}</small></button></div>
-      </div>`;
-    }
-  }
-  const locked = SECTIONS.filter(s => state.sections[s.id].level <= 0).length;
-  if (locked > 1) html += `<div class="empty">🔒 ${locked - 1} more section${locked > 2 ? 's' : ''} to discover…</div>`;
-  if (state.sections.svc.level > 0) html += buildHtml();
-  screen.innerHTML = html;
-
-  for (const s of SECTIONS) {
-    const card = document.getElementById('card-' + s.id);
-    if (!card) continue;
-    refs[s.id] = {
-      card,
-      icon: card.querySelector('.sec-icon'),
-      lvl: card.querySelector('.lvl'),
-      ring: card.querySelector('.ring .fg'),
-      price: card.querySelector('.sec-price'),
-      product: card.querySelector('.sec-product'),
-      fill: card.querySelector('.fill'),
-      barMoney: card.querySelector('.bar-money'),
-      barTime: card.querySelector('.bar-time'),
-      btn: card.querySelector('.lvlbtn'),
-      btnLabel: card.querySelector('.lvl-label'),
-      btnCost: card.querySelector('.lvl-cost'),
-    };
-  }
-}
-
-function buildHtml() {
-  const b = state.build;
-  if (!b) {
-    return `<div class="build"><h3>🧰 Custom Build Desk <small>${state.buildsDone} builds done</small></h3>
-      <div class="build-wait">⏳ Next customer in <span id="buildTimer">…</span></div></div>`;
-  }
-  const wants = b.wants.map(w => `<span class="want ${b.picked.includes(w.key) ? 'done' : ''}">${SEC[w.sid].icon} ${w.name}</span>`).join('');
-  const tray = b.tray.map((p, i) => `<button class="part ${b.picked.includes(p.key) ? 'picked' : ''}" data-act="part" data-idx="${i}"><span>${SEC[p.sid].icon}</span>${p.name}</button>`).join('');
-  return `<div class="build"><h3>🧰 Custom Build Desk <small>${state.buildsDone} builds done</small></h3>
-    <div class="customer"><div class="face">${b.face}</div><div class="bubble"><b>${b.name}:</b> “${b.line}”</div></div>
-    <div class="lock-text">Grab these parts from the shelves:</div>
-    <div class="wants">${wants}</div>
-    <div class="tray">${tray}</div>
-    <div class="reward-line" id="buildReward" style="margin-top:10px">${rewardText()}</div></div>`;
-}
-
-function renderManagers() {
-  let html = `<div class="screen-title">👔 Managers</div><div class="screen-sub">Managers run a section for you — even while you're away.</div>`;
-  for (const s of SECTIONS) {
-    const st = state.sections[s.id], m = s.manager;
-    const unlocked = st.level > 0;
-    html += `<div class="item ${st.manager ? 'done' : ''}">
-      <div class="avatar" style="--c:${s.color}">${m.icon}</div>
-      <div class="info"><div class="title">${m.name}</div><div class="desc">${unlocked ? `Runs ${s.name} automatically` : `Unlock ${s.name} first`}</div></div>
-      ${st.manager ? `<button class="btn owned" disabled>Hired ✓</button>`
-        : `<button class="btn green" data-act="manager" data-id="${s.id}" data-cost="${m.cost}" ${unlocked ? '' : 'data-locked="1"'}>Hire<small>${money$(m.cost)}</small></button>`}
-    </div>`;
-  }
-  screen.innerHTML = html;
-}
-
-function renderUpgrades() {
-  const avail = UPGRADES.filter(u => !state.upgrades.includes(u.id)).slice(0, 12);
-  let html = `<div class="screen-title">🚀 Upgrades</div><div class="screen-sub">Boost your profits. ${state.upgrades.length}/${UPGRADES.length} purchased.</div>`;
-  if (!avail.length) html += `<div class="empty">You bought every upgrade! 🎉</div>`;
-  for (const u of avail) {
-    const target = u.target === 'all' ? { icon: '🏪', name: 'All sections', color: '#ffe17a' } : SEC[u.target];
-    html += `<div class="item">
-      <div class="avatar" style="--c:${target.color}">${target.icon}</div>
-      <div class="info"><div class="title">${u.name}</div><div class="desc">${target.name} profit x${u.mult}</div></div>
-      <button class="btn green" data-act="upgrade" data-id="${u.id}" data-cost="${u.cost}">Buy<small>${money$(u.cost)}</small></button>
-    </div>`;
-  }
-  screen.innerHTML = html;
-}
-
-function renderFranchise() {
-  const gain = claimableStars();
-  const nextStarAt = Math.pow((totalStarsEarned() + 1) / 10, 2) * 1e9;
-  screen.innerHTML = `<div class="screen-title">⭐ Franchise</div>
-    <div class="screen-sub">Sell this store and open a bigger one. You keep your Stars — each gives +${STAR_BONUS * 100}% profit forever.</div>
-    <div class="big-card">
-      <div class="stars">⭐ ${fmt(state.stars)}</div>
-      <p>Current bonus: profit x${starMult().toFixed(2)}</p>
-      <div style="font-size:18px;font-weight:700">Open a new store for <span style="color:var(--green-dark)">+${fmt(gain)} ⭐</span></div>
-      <p>Next Star at ${money$(nextStarAt)} lifetime earnings</p>
-      <button class="btn ${gain > 0 ? 'green' : 'disabled'}" data-act="franchise" style="width:100%">${gain > 0 ? 'Franchise!' : 'Earn more to franchise'}<small>Resets cash, sections, managers & upgrades</small></button>
-    </div>
-    <div class="big-card"><div class="stat-grid">
-      <div class="stat">Lifetime earnings<b>${money$(state.lifetime)}</b></div>
-      <div class="stat">This store<b>${money$(state.runEarned)}</b></div>
-      <div class="stat">Stores opened<b>${state.franchises + 1}</b></div>
-      <div class="stat">Custom builds<b>${state.buildsDone}</b></div>
-    </div></div>`;
-}
-
-// Per-frame updates of dynamic values (no DOM rebuild)
-let lastMoneyText = '';
-function refresh(force) {
-  const mt = fmt(state.money);
-  if (mt !== lastMoneyText || force) { $('#moneyVal').textContent = mt; lastMoneyText = mt; }
-  $('#incomeVal').textContent = money$(incomePerSec(true));
-
-  if (tab === 'store') {
-    for (const s of SECTIONS) {
-      const r = refs[s.id];
-      if (!r) continue;
-      const st = state.sections[s.id];
-      if (st.level <= 0) {
-        setBtn(r.btn, state.money >= s.baseCost);
-        continue;
-      }
-      const t = cycleTime(s.id);
-      const fast = st.manager && t < 0.3;
-      r.fill.classList.toggle('fast', fast);
-      if (!fast) r.fill.style.width = (st.progress * 100).toFixed(1) + '%';
-      r.barMoney.textContent = money$(revenue(s.id));
-      r.barTime.textContent = fast ? 'MAX SPEED' : st.running ? fmtTime(t * (1 - st.progress)) : (st.manager ? '' : 'Tap icon!');
-      r.icon.classList.toggle('idle-hint', !st.running && !st.manager);
-      r.lvl.textContent = 'Lv ' + st.level;
-      const nm = nextMilestone(st.level), pm = prevMilestone(st.level);
-      const frac = nm ? (st.level - pm) / (nm - pm) : 1;
-      r.ring.style.strokeDashoffset = (276.5 * (1 - frac)).toFixed(1);
-      r.product.textContent = `Selling: ${currentTier(s.id)}${nm ? ` · next bonus Lv ${nm}` : ''}`;
-      r.price.textContent = money$(revenue(s.id) / Math.max(1, st.level)) + ' each';
-      const n = buyCount(s.id);
-      const cost = costFor(s.id, n);
-      r.btnLabel.textContent = `Level Up x${n}`;
-      r.btnCost.textContent = money$(cost);
-      setBtn(r.btn, state.money >= cost);
-    }
-    const bt = document.getElementById('buildTimer');
-    if (bt) bt.textContent = fmtTime(Math.max(0, (state.nextBuildAt - Date.now()) / 1000));
-  } else {
-    screen.querySelectorAll('[data-cost]').forEach(b => setBtn(b, !b.dataset.locked && state.money >= +b.dataset.cost));
-  }
-}
-function setBtn(btn, ok) { if (btn) btn.classList.toggle('disabled', !ok); }
-
-function updateAlerts() {
-  const canMgr = SECTIONS.some(s => state.sections[s.id].level > 0 && !state.sections[s.id].manager && state.money >= s.manager.cost);
-  const canUpg = UPGRADES.some(u => !state.upgrades.includes(u.id) && state.money >= u.cost);
-  const canFr = claimableStars() >= Math.max(1, Math.ceil(state.stars * 0.5));
-  const setA = (t, on) => document.querySelector(`.tab[data-tab="${t}"]`).classList.toggle('alert', on && tab !== t);
-  setA('managers', canMgr);
-  setA('upgrades', canUpg);
-  setA('franchise', canFr);
-  setA('store', !!state.build);
-}
-
-// ---------- FX ----------
-function flushFloats() {
-  if (tab !== 'store') { for (const k in floatAcc) delete floatAcc[k]; return; }
-  for (const id in floatAcc) {
-    const r = refs[id];
-    if (r && floatAcc[id] > 0) {
-      const rect = r.icon.getBoundingClientRect();
-      if (rect.bottom > 0 && rect.top < window.innerHeight) floatText('+' + money$(floatAcc[id]), rect.left + rect.width / 2, rect.top);
-    }
-    delete floatAcc[id];
-  }
-}
-function floatText(text, x, y) {
-  const el = document.createElement('div');
-  el.className = 'float';
-  el.textContent = text;
-  el.style.left = x + 'px';
-  el.style.top = y + 'px';
-  $('#fx').appendChild(el);
-  setTimeout(() => el.remove(), 1000);
-  const m = $('#money'); m.classList.remove('bump'); void m.offsetWidth; m.classList.add('bump');
-}
+// ---------- FX & UI helpers ----------
 function confetti() {
   const colors = ['#ffc83d', '#2ecc71', '#ff5a5f', '#7fd4ff', '#c3a6ff', '#ff8fb1'];
   for (let i = 0; i < 36; i++) {
@@ -677,9 +921,13 @@ function toast(msg) {
   box.appendChild(el);
   setTimeout(() => el.remove(), 2700);
 }
-
-// ---------- Modal ----------
-function showModal(html) { $('#modalCard').innerHTML = html; $('#modal').classList.remove('hidden'); }
+function showModal(html, sheet = false) {
+  $('#modalCard').innerHTML = html;
+  $('#modalCard').classList.toggle('sheet', sheet);
+  $('#modal').classList.toggle('as-sheet', sheet);
+  $('#modal').classList.remove('hidden');
+  input.x = input.y = 0;
+}
 function closeModal() { $('#modal').classList.add('hidden'); }
 function showSettings() {
   showModal(`
@@ -692,76 +940,98 @@ function showSettings() {
     <button class="btn disabled" data-act="close">Close</button>`);
 }
 
-// ---------- Input ----------
-let holdTimer = null, holdInterval = null, holdFired = false;
-function stopHold() { clearTimeout(holdTimer); clearInterval(holdInterval); holdTimer = holdInterval = null; }
-
-screen.addEventListener('pointerdown', e => {
-  const btn = e.target.closest('[data-act="level"]');
-  if (!btn) return;
-  holdFired = false;
-  stopHold();
-  // Hold the Level Up button to keep buying
-  holdTimer = setTimeout(() => {
-    holdInterval = setInterval(() => { if (levelUp(btn.dataset.id)) holdFired = true; }, 90);
-  }, 400);
-});
-['pointerup', 'pointercancel'].forEach(ev => window.addEventListener(ev, stopHold));
-screen.addEventListener('scroll', stopHold, { passive: true });
-
 document.addEventListener('click', e => {
   const el = e.target.closest('[data-act]');
   if (!el) return;
   const { act, id } = el.dataset;
   switch (act) {
-    case 'sell': startSale(id); break;
-    case 'level': if (!holdFired) levelUp(id); holdFired = false; break;
-    case 'unlock': levelUp(id, 1); break;
-    case 'manager': hireManager(id); break;
-    case 'upgrade': buyUpgrade(id); break;
-    case 'part': pickPart(+el.dataset.idx, el); break;
-    case 'franchise':
-      if (claimableStars() > 0) showModal(`<div class="emoji">⭐</div><h2>Open a new store?</h2>
-        <p>You'll gain <b>${claimableStars()} Stars</b> and start over with a permanent profit bonus of x${(1 + (state.stars + claimableStars()) * STAR_BONUS).toFixed(2)}.</p>
-        <button class="btn green" data-act="confirmFranchise">Franchise!</button><button class="btn disabled" data-act="close">Not yet</button>`);
+    case 'level':
+      if (spend(levelCost(id))) {
+        state.sec[id].level++;
+        sfx.unlock();
+        const L = state.sec[id].level;
+        toast(MILESTONES.includes(L) ? `🏆 ${SEC[id].name} Lv ${L}! Prices x2` : `⬆️ ${SEC[id].name} Lv ${L}: ${SEC[id].item} now sells for ${money$(price(id))}`);
+        showUpgrades();
+      }
       break;
-    case 'confirmFranchise': franchise(); break;
+    case 'hire':
+      if (!state.staff[id] && spend(STAFF[id].cost)) {
+        state.staff[id] = true; sfx.unlock(); confetti();
+        toast(`${STAFF[id].icon} ${STAFF[id].name} joined your team!`);
+        showUpgrades();
+      }
+      break;
+    case 'speed':
+      if (state.speedLv < MAX_PLAYER_LV && spend(speedCost())) { state.speedLv++; sfx.unlock(); showUpgrades(); }
+      break;
+    case 'carry':
+      if (state.carryLv < MAX_PLAYER_LV && spend(carryCost())) { state.carryLv++; sfx.unlock(); showUpgrades(); }
+      break;
     case 'close': closeModal(); break;
     case 'saveName': {
       const v = ($('#nameInput').value || '').trim();
       if (v) state.storeName = v.slice(0, 24);
-      save(); closeModal(); render();
+      save(); closeModal();
       break;
     }
     case 'toggleSound': state.sound = !state.sound; showSettings(); break;
     case 'askReset':
-      showModal(`<div class="emoji">⚠️</div><h2>Reset everything?</h2><p>This wipes all progress, including Stars.</p>
+      showModal(`<div class="emoji">⚠️</div><h2>Reset everything?</h2><p>This wipes all progress.</p>
         <button class="btn danger" data-act="confirmReset">Yes, reset</button><button class="btn disabled" data-act="close">Cancel</button>`);
       break;
     case 'confirmReset':
-      state = freshRun();
-      save(); closeModal(); tab = 'store'; render();
+      state = freshState();
+      customers = []; queue = []; fx = []; buildProgress = 0;
+      for (const k in npcs) delete npcs[k];
+      save(); closeModal();
       break;
   }
 });
-
-document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => { tab = t.dataset.tab; screen.scrollTop = 0; render(); }));
-$('#buyModeBtn').addEventListener('click', () => { state.buyMode = (state.buyMode + 1) % BUY_MODES.length; render(); });
+$('#upgradeBtn').addEventListener('click', showUpgrades);
 $('#settingsBtn').addEventListener('click', showSettings);
 $('#modal').addEventListener('click', e => { if (e.target.id === 'modal') closeModal(); });
 
+// ---------- Offline earnings ----------
+function applyOffline() {
+  const away = Math.min(2 * 3600, (Date.now() - (state.lastSeen || Date.now())) / 1000);
+  state.lastSeen = Date.now();
+  if (away < 30 || !state.staff.cashier || !state.staff.stocker) return;
+  const earned = state.rate * away * 0.5;
+  if (earned < 1) return;
+  earn(earned);
+  showModal(`
+    <div class="emoji">🌙</div>
+    <h2>Welcome back!</h2>
+    <p>Your staff kept the store open for ${fmtTime(away)}.</p>
+    <div style="font-size:30px;font-weight:700;color:var(--green-dark)">+${money$(earned)}</div>
+    <button class="btn green" data-act="close">Collect</button>`);
+}
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) save();
-  else { applyOffline(); lastFrame = performance.now(); }
+  else { applyOffline(); last = performance.now(); }
 });
 window.addEventListener('pagehide', save);
 
-// ---------- Boot ----------
-if (state.sections.svc.level > 0 && !state.build && !state.nextBuildAt) state.nextBuildAt = Date.now() + 5000;
-render();
+// ---------- Loop ----------
+let last = performance.now(), saveTimer = 0;
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000);
+  last = now;
+  time += dt;
+  update(dt);
+  updateRate(dt);
+  updateHud(dt);
+  render();
+  saveTimer += dt;
+  if (saveTimer > 5) { save(); saveTimer = 0; }
+  requestAnimationFrame(frame);
+}
+
+resize();
+cam.x = state.player.x; cam.y = state.player.y;
 applyOffline();
-requestAnimationFrame(t => { lastFrame = t; frame(t); });
-if (isNewPlayer) toast('👆 Tap the mouse icon to make your first sale!');
+requestAnimationFrame(t => { last = t; frame(t); });
+if (isNewPlayer) toast('👆 Drag anywhere to move. Restock shelves and check out shoppers!');
 
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
   navigator.serviceWorker.register('sw.js').catch(() => {});
