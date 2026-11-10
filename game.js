@@ -48,6 +48,11 @@ const STAFF = {
   tech: { name: 'Tech Tara', icon: '👩‍💻', cost: 8000, desc: 'Assembles PCs at the Service Station' },
 };
 const MAX_PLAYER_LV = 8;
+// Floor pads where you hire staff by standing on them
+const HIRE_PADS = {
+  cashier: { x: 268, y: 700, label: 'CASHIER' },
+  stocker: { x: 300, y: 95, label: 'STOCKER' },
+};
 
 // ---------- State ----------
 function freshState(keep = {}) {
@@ -59,6 +64,7 @@ function freshState(keep = {}) {
     sound: keep.sound !== undefined ? keep.sound : true,
     sec, speedLv: 0, carryLv: 0,
     staff: { cashier: false, stocker: false, tech: false },
+    staffPaid: { cashier: 0, stocker: 0 },
     player: { x: 300, y: 600 },
     carry: [],
     rate: 0,
@@ -74,6 +80,7 @@ function load() {
     const merged = Object.assign(base, s);
     for (const sc of SECTIONS) merged.sec[sc.id] = Object.assign(base.sec[sc.id], (s.sec || {})[sc.id] || {});
     merged.staff = Object.assign(freshState().staff, s.staff || {});
+    merged.staffPaid = Object.assign(freshState().staffPaid, s.staffPaid || {});
     return merged;
   } catch (e) { return null; }
 }
@@ -354,6 +361,25 @@ function updatePlayer(dt) {
       if (st.paid >= s.unlock - 1e-6) unlockSection(s.id);
     }
   }
+  // Hire pads: money flows in while you stand on them
+  for (const k in HIRE_PADS) {
+    if (state.staff[k]) continue;
+    const pad = HIRE_PADS[k], cost = STAFF[k].cost;
+    if (inRect(p, padRect(pad)) && state.money > 0) {
+      const amt = Math.min(state.money, cost - state.staffPaid[k], Math.max(25, cost / 1.6) * dt);
+      state.money -= amt; state.staffPaid[k] += amt;
+      if (Math.random() < dt * 20) fx.push({ type: 'coin', x: p.x, y: p.y - 30, tx: pad.x, ty: pad.y, t: 0 });
+      if (state.staffPaid[k] >= cost - 1e-6) hireStaff(k);
+    }
+  }
+}
+function hireStaff(k) {
+  if (state.staff[k]) return;
+  state.staff[k] = true;
+  if (state.staffPaid[k] !== undefined) state.staffPaid[k] = STAFF[k].cost;
+  sfx.unlock(); confetti();
+  toast(`${STAFF[k].icon} ${STAFF[k].name} joined your team!`);
+  save();
 }
 function moveAxis(p, dx, dy) {
   const nx = Math.max(16 + PLAYER_R, Math.min(W - 16 - PLAYER_R, p.x + dx));
@@ -515,6 +541,7 @@ function render() {
   for (const s of PARTS) drawShelf(s);
   drawService();
   drawUnlockPads();
+  drawHirePads();
 
   // Characters, sorted by depth
   const people = [...customers.map(c => ({ o: c, kind: 'cust' })), { o: state.player, kind: 'player' }];
@@ -672,6 +699,21 @@ function drawUnlockPads() {
   }
 }
 
+function drawHirePads() {
+  for (const k in HIRE_PADS) {
+    if (state.staff[k]) continue;
+    const pad = HIRE_PADS[k], r = padRect(pad), cost = STAFF[k].cost;
+    const pct = state.staffPaid[k] / cost;
+    rr(r.x, r.y + 5, r.w, r.h, 12); ctx.fillStyle = '#1f6fb2'; ctx.fill();
+    rr(r.x, r.y, r.w, r.h, 12); ctx.fillStyle = '#8fd3ff'; ctx.fill();
+    ctx.save(); rr(r.x, r.y, r.w, r.h, 12); ctx.clip();
+    ctx.fillStyle = '#2ecc71'; ctx.fillRect(r.x, r.y, r.w * pct, r.h); ctx.restore();
+    drawEmoji(STAFF[k].icon, r.x + 18, r.y + r.h / 2, 18);
+    text('HIRE ' + pad.label, r.x + r.w / 2 + 10, r.y + 18, 9, '#123a5c');
+    text(money$(Math.ceil(cost - state.staffPaid[k])), r.x + r.w / 2 + 10, r.y + 36, 15, '#123a5c');
+  }
+}
+
 function drawPerson(o, kind) {
   const bob = o.moving ? Math.sin(time * 14 + (o.x + o.y) * 0.05) * 2 : 0;
   const x = o.x, y = o.y;
@@ -756,6 +798,10 @@ function objective() {
   if (svcWaiting && !state.staff.tech && dist(p, SEC.svc.workPad) > 34) return { pt: SEC.svc.workPad, text: 'A customer wants a custom PC. Go build it!' };
   const next = SECTIONS.find(s => !state.sec[s.id].unlocked);
   if (next && state.money >= next.unlock - state.sec[next.id].paid) return { pt: next.front, text: `Stand on the pad to unlock ${next.name}` };
+  for (const k in HIRE_PADS) {
+    if (!state.staff[k] && state.money >= staffRemaining(k) && !inRect(p, padRect(HIRE_PADS[k])))
+      return { pt: HIRE_PADS[k], text: `Stand on the pad to hire a ${HIRE_PADS[k].label.toLowerCase()}` };
+  }
   const low = unlockedParts().find(s => state.sec[s.id].stock === 0) || (state.carry.length === 0 && unlockedParts().find(s => state.sec[s.id].stock < 2));
   if (low && state.carry.length < carryCap()) return { pt: low.crate, text: `Grab ${low.items} from the stockroom` };
   return null;
@@ -781,14 +827,11 @@ function drawObjective() {
 // ---------- Joystick ----------
 const joy = { active: false, id: null, ox: 0, oy: 0, x: 0, y: 0 };
 const JOY_R = 55;
-const joyBase = document.getElementById('joyBase'), joyKnob = document.getElementById('joyKnob');
 canvas.addEventListener('pointerdown', e => {
   if (joy.active) return;
   joy.active = true; joy.id = e.pointerId;
   joy.ox = joy.x = e.clientX; joy.oy = joy.y = e.clientY;
   canvas.setPointerCapture(e.pointerId);
-  joyBase.style.left = e.clientX + 'px'; joyBase.style.top = e.clientY + 'px';
-  joyBase.classList.add('show');
   moveJoy(e);
   if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
 });
@@ -796,7 +839,6 @@ canvas.addEventListener('pointermove', e => { if (joy.active && e.pointerId === 
 function endJoy(e) {
   if (!joy.active || e.pointerId !== joy.id) return;
   joy.active = false; input.x = input.y = 0;
-  joyBase.classList.remove('show');
 }
 canvas.addEventListener('pointerup', endJoy);
 canvas.addEventListener('pointercancel', endJoy);
@@ -804,7 +846,6 @@ function moveJoy(e) {
   let dx = e.clientX - joy.ox, dy = e.clientY - joy.oy;
   const d = Math.hypot(dx, dy);
   if (d > JOY_R) { dx = dx / d * JOY_R; dy = dy / d * JOY_R; }
-  joyKnob.style.transform = `translate(${dx}px, ${dy}px)`;
   const mag = Math.min(1, d / JOY_R);
   input.x = d > 6 ? dx / (Math.hypot(dx, dy) || 1) * mag : 0;
   input.y = d > 6 ? dy / (Math.hypot(dx, dy) || 1) * mag : 0;
@@ -848,11 +889,12 @@ function updateRate(dt) {
 // ---------- Upgrades panel ----------
 function anyAffordable() {
   for (const s of SECTIONS) if (state.sec[s.id].unlocked && state.money >= levelCost(s.id)) return true;
-  for (const k in STAFF) if (!state.staff[k] && staffAvailable(k) && state.money >= STAFF[k].cost) return true;
+  for (const k in STAFF) if (!state.staff[k] && staffAvailable(k) && state.money >= staffRemaining(k)) return true;
   if (state.speedLv < MAX_PLAYER_LV && state.money >= speedCost()) return true;
   if (state.carryLv < MAX_PLAYER_LV && state.money >= carryCost()) return true;
   return false;
 }
+function staffRemaining(k) { return STAFF[k].cost - (state.staffPaid[k] || 0); }
 function staffAvailable(k) { return k !== 'tech' || state.sec.svc.unlocked; }
 function showUpgrades() {
   let html = `<div class="sheet-head"><h2>Upgrades</h2><button class="icon-btn small" data-act="close" aria-label="Close">✕</button></div>`;
@@ -877,9 +919,9 @@ function showUpgrades() {
     const s = STAFF[k];
     const avail = staffAvailable(k);
     html += `<div class="item ${state.staff[k] ? 'done' : ''}"><div class="avatar" style="--c:#ece8fb">${s.icon}</div>
-      <div class="info"><div class="title">${s.name}</div><div class="desc">${avail ? s.desc : 'Unlock the Service Station first'}</div></div>
+      <div class="info"><div class="title">${s.name}</div><div class="desc">${avail ? s.desc + (HIRE_PADS[k] && !state.staff[k] ? ' · or hire on the store floor' : '') : 'Unlock the Service Station first'}</div></div>
       ${state.staff[k] ? '<button class="btn owned" disabled>Hired ✓</button>'
-        : avail ? `<button class="btn green" data-act="hire" data-id="${k}" data-cost="${s.cost}">Hire<small>${money$(s.cost)}</small></button>` : ''}</div>`;
+        : avail ? `<button class="btn green" data-act="hire" data-id="${k}" data-cost="${staffRemaining(k)}">Hire<small>${money$(staffRemaining(k))}</small></button>` : ''}</div>`;
   }
   html += `<div class="group">You</div>`;
   html += playerRow('speed', '👟', 'Running Shoes', `Walk speed Lv ${state.speedLv}/${MAX_PLAYER_LV}`, state.speedLv, speedCost());
@@ -955,11 +997,7 @@ document.addEventListener('click', e => {
       }
       break;
     case 'hire':
-      if (!state.staff[id] && spend(STAFF[id].cost)) {
-        state.staff[id] = true; sfx.unlock(); confetti();
-        toast(`${STAFF[id].icon} ${STAFF[id].name} joined your team!`);
-        showUpgrades();
-      }
+      if (!state.staff[id] && spend(staffRemaining(id))) { hireStaff(id); showUpgrades(); }
       break;
     case 'speed':
       if (state.speedLv < MAX_PLAYER_LV && spend(speedCost())) { state.speedLv++; sfx.unlock(); showUpgrades(); }
