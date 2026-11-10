@@ -20,9 +20,9 @@ const SECTIONS = [
   { id: 'case', name: 'PC Cases', item: 'PC Case', items: 'PC cases', icon: '🗄️', color: '#a77bff', price: 25, unlock: 120,
     shelf: { x: 534, y: 270, w: 40, h: 330 }, crate: { x: 205, y: 90 }, stockSpot: { x: 506, y: 435 }, pad: { x: 478, y: 435 } },
   { id: 'mon', name: 'Monitors', item: 'Monitor', items: 'monitors', icon: '🖥️', color: '#2ecc8f', price: 60, unlock: 600,
-    shelf: { x: 200, y: 360, w: 200, h: 42 }, crate: { x: 320, y: 90 }, stockSpot: { x: 300, y: 336 }, pad: { x: 300, y: 330 } },
+    shelf: { x: 200, y: 345, w: 200, h: 42 }, crate: { x: 320, y: 90 }, stockSpot: { x: 300, y: 321 }, pad: { x: 300, y: 313 } },
   { id: 'gpu', name: 'Graphics Cards', item: 'GPU', items: 'GPUs', icon: '🎮', color: '#ff9f43', price: 140, unlock: 2500,
-    shelf: { x: 200, y: 450, w: 200, h: 42 }, crate: { x: 435, y: 90 }, stockSpot: { x: 300, y: 522 }, pad: { x: 300, y: 530 } },
+    shelf: { x: 200, y: 465, w: 200, h: 42 }, crate: { x: 435, y: 90 }, stockSpot: { x: 300, y: 533 }, pad: { x: 300, y: 548 } },
   { id: 'svc', name: 'Service Station', item: 'Custom PC', items: 'custom PCs', icon: '🛠️', color: '#ff6b9a', price: 400, unlock: 10000,
     bench: { x: 210, y: 200, w: 180, h: 40 }, pad: { x: 300, y: 272 } },
 ];
@@ -33,12 +33,18 @@ SEC.svc.workPad = { x: 252, y: 274 };           // where you stand to assemble
 const STOCKROOM_H = 140;                        // stockroom band: y 16..156
 const CRATE_W = 84, CRATE_H = 64;
 
-// One-way shopper loop: entrance → up the left side → across the top → down the right side
+// Rough clockwise order shoppers visit sections in (they wander freely between stops)
 const LOOP = [{ x: 105, y: 1000 }, { x: 130, y: 680 }, { x: 130, y: 300 }, { x: 470, y: 300 }, { x: 470, y: 700 }];
 const LOOP_CUM = [0];
 for (let i = 1; i < LOOP.length; i++) LOOP_CUM.push(LOOP_CUM[i - 1] + Math.hypot(LOOP[i].x - LOOP[i - 1].x, LOOP[i].y - LOOP[i - 1].y));
 const S_END = LOOP_CUM[LOOP_CUM.length - 1];
 const ENTRANCE = { x: 40, w: 130 }, EXIT = { x: 430, w: 130 };
+// Open-floor spots where shoppers stop to look around
+const WANDER_SPOTS = [
+  { x: 160, y: 255 }, { x: 440, y: 255 }, { x: 230, y: 426 }, { x: 300, y: 426 }, { x: 370, y: 426 },
+  { x: 130, y: 450 }, { x: 470, y: 450 }, { x: 200, y: 630 }, { x: 300, y: 610 }, { x: 420, y: 640 },
+  { x: 250, y: 700 }, { x: 160, y: 800 },
+];
 const EXIT_PATH = [{ x: 540, y: 720 }, { x: 540, y: 960 }, { x: 495, y: H + 30 }];
 
 // Two checkout lanes. Shoppers line up on the left of each counter; the clerk stands on the right.
@@ -280,24 +286,12 @@ function loopS(p) {
   }
   return bestS;
 }
-function loopPoint(s) {
-  for (let i = 1; i < LOOP.length; i++) if (s <= LOOP_CUM[i] || i === LOOP.length - 1) {
-    const k = Math.max(0, Math.min(1, (s - LOOP_CUM[i - 1]) / (LOOP_CUM[i] - LOOP_CUM[i - 1])));
-    return { x: LOOP[i - 1].x + (LOOP[i].x - LOOP[i - 1].x) * k, y: LOOP[i - 1].y + (LOOP[i].y - LOOP[i - 1].y) * k };
-  }
-}
-function loopPath(s1, s2) {
-  const pts = [];
-  for (let i = 0; i < LOOP.length; i++) if (LOOP_CUM[i] > s1 + 0.5 && LOOP_CUM[i] < s2 - 0.5) pts.push({ ...LOOP[i] });
-  pts.push(loopPoint(s2));
-  return pts;
-}
 function walk(o, dt) {
   if (!o.path.length) return true;
   const tgt = o.path[0];
   const dx = tgt.x - o.x, dy = tgt.y - o.y, d = Math.hypot(dx, dy);
   const step = o.speed * dt;
-  if (d <= step) { o.x = tgt.x; o.y = tgt.y; o.path.shift(); }
+  if (d <= step) { o.x = tgt.x; o.y = tgt.y; o.path.shift(); if (tgt.pause) o.pauseT = tgt.pause; }
   else { o.x += dx / d * step; o.y += dy / d * step; o.face = dx < 0 ? -1 : 1; }
   o.moving = true;
   return !o.path.length;
@@ -307,16 +301,30 @@ function walk(o, dt) {
 const SHIRTS = ['#ff6b6b', '#ffd166', '#06d6a0', '#118ab2', '#ef476f', '#8338ec', '#fb8500', '#3a86ff'];
 const SKINS = ['#f5d0a9', '#e0ac69', '#c68642', '#8d5524', '#ffdbac'];
 const HAIR = ['#2b1d0e', '#6b3e1b', '#e8c170', '#111', '#b5542b', '#999'];
-// Where a shopper steps off the loop to reach a section
+// Where a shopper stands to grab something from a section
 function makeStop(id) {
-  const r = Math.random();
-  let approach, spot;
-  if (id === 'acc') { const y = 290 + r * 290; approach = { x: 130, y }; spot = { x: 94, y }; }
-  else if (id === 'case') { const y = 290 + r * 290; approach = { x: 470, y }; spot = { x: 506, y }; }
-  else if (id === 'mon') { const x = 215 + r * 170; approach = { x, y: 300 }; spot = { x, y: 336 }; }
-  else if (id === 'gpu') { const x = 215 + r * 170; approach = { x: 470, y: 522 }; spot = { x, y: 522 }; }
-  else { approach = { x: SEC.svc.custSpot.x, y: 300 }; spot = { ...SEC.svc.custSpot }; }
-  return { id, approach, spot, s: loopS(approach) };
+  const r = Math.random(), side = Math.random() < 0.5;
+  let spot;
+  if (id === 'acc') spot = { x: 94, y: 290 + r * 290 };
+  else if (id === 'case') spot = { x: 506, y: 290 + r * 290 };
+  else if (id === 'mon') spot = { x: 215 + r * 170, y: side ? 321 : 413 };   // in front, or from the middle aisle
+  else if (id === 'gpu') spot = { x: 215 + r * 170, y: side ? 533 : 439 };
+  else spot = { ...SEC.svc.custSpot };
+  return { id, spot, s: loopS(spot) };
+}
+// Walk to a target, sometimes stopping somewhere on the floor to look around first
+function wanderTo(c, target, chance = 0.45) {
+  if (Math.random() < chance) {
+    const options = WANDER_SPOTS.filter(w => dist(w, c) > 60 && dist(w, target) > 60);
+    const w = options[Math.floor(Math.random() * options.length)];
+    if (w) {
+      const look = { x: w.x + (Math.random() * 30 - 15), y: w.y + (Math.random() * 20 - 10) };
+      const first = route(c, look);
+      first[first.length - 1].pause = 0.8 + Math.random() * 1.8;
+      return [...first, ...route(look, target)];
+    }
+  }
+  return route(c, target);
 }
 function spawnCustomer() {
   const parts = unlockedParts();
@@ -324,11 +332,11 @@ function spawnCustomer() {
   const wantsBuild = state.sec.svc.unlocked && !svcActive && Math.random() < 0.3;
   const x = ENTRANCE.x + ENTRANCE.w / 2 + (Math.random() * 30 - 15);
   const c = {
-    x, y: H + 10, path: [{ x, y: 990 }], speed: 85 + Math.random() * 30,
+    x, y: H + 10, path: [{ x, y: 960 }], speed: 75 + Math.random() * 35, pauseT: 0,
     shirt: SHIRTS[Math.floor(Math.random() * SHIRTS.length)],
     skin: SKINS[Math.floor(Math.random() * SKINS.length)],
     hair: HAIR[Math.floor(Math.random() * HAIR.length)],
-    wants: [], stops: [], cart: [], idx: 0, going: -1, phase: 'walk', s: 0,
+    wants: [], stops: [], cart: [], idx: 0, going: -1, phase: 'walk',
     timer: 0, patience: 14, state: 'shop', scanned: 0, mood: null, face: 1,
   };
   if (wantsBuild) {
@@ -347,13 +355,9 @@ function leave(c, mood) {
   c.state = 'leave';
   c.mood = mood;
   c.moodT = 0;
-  if (wasQueued) {
-    c.path = [{ x: c.x, y: 900 }, { x: 495, y: 960 }, { x: 495, y: H + 30 }];
-  } else {
-    // Finish the loop, then head out the exit
-    const back = c.atStop ? [{ ...c.atStop.approach }] : [];
-    c.path = [...back, ...loopPath(c.s, S_END), ...EXIT_PATH.map(p => ({ ...p }))];
-  }
+  c.pauseT = 0;
+  if (wasQueued) c.path = [{ x: c.x, y: 900 }, { x: 495, y: 960 }, { x: 495, y: H + 30 }];
+  else c.path = [...route(c, EXIT_PATH[0]), ...EXIT_PATH.slice(1).map(p => ({ ...p }))];
   if (mood === 'sad') sfx.sad();
 }
 function joinQueue(c) {
@@ -366,6 +370,7 @@ function joinQueue(c) {
 function updateCustomer(c, dt) {
   c.moving = false;
   if (c.mood) c.moodT += dt;
+  if (c.pauseT > 0) { c.pauseT -= dt; return; }
   const arrived = walk(c, dt);
   if (!arrived) return;
 
@@ -383,16 +388,15 @@ function updateCustomer(c, dt) {
         c.patience -= dt;
         if (c.patience <= 0) { done = true; c.patience = 10; c.waiting = false; }
       }
-      if (done) { c.path = [{ ...stop.approach }]; c.s = stop.s; c.atStop = null; c.idx++; c.phase = 'walk'; }
+      if (done) { c.idx++; c.phase = 'walk'; }
       return;
     }
     if (c.idx < c.stops.length) {
       const stop = c.stops[c.idx];
-      if (c.going !== c.idx) { c.going = c.idx; c.path = [...loopPath(c.s, stop.s), { ...stop.spot }]; return; }
-      c.phase = 'browse'; c.timer = 0; c.s = stop.s; c.atStop = stop;
+      if (c.going !== c.idx) { c.going = c.idx; c.path = wanderTo(c, stop.spot, c.idx === 0 ? 0.3 : 0.45); return; }
+      c.phase = 'browse'; c.timer = 0;
       return;
     }
-    if (!c.toCheckout) { c.toCheckout = true; c.path = loopPath(c.s, S_END); c.s = S_END; return; }
     if (c.cart.length) joinQueue(c); else leave(c, 'sad');
   } else if (c.state === 'queue') {
     const q = queues[c.lane];
@@ -715,18 +719,6 @@ function drawFloor() {
   for (let y = 16; y < H; y += 40) for (let x = 16; x < W; x += 40) {
     ctx.fillStyle = ((x + y) / 40) % 2 === 0 ? '#f4f1ff' : '#e9e4fb';
     ctx.fillRect(x, y, 40, 40);
-  }
-  ctx.restore();
-  // painted one-way loop with chevrons
-  ctx.save();
-  ctx.strokeStyle = 'rgba(155,135,230,.22)'; ctx.lineWidth = 34; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
-  ctx.beginPath(); ctx.moveTo(LOOP[0].x, LOOP[0].y); for (const p of LOOP.slice(1)) ctx.lineTo(p.x, p.y); ctx.stroke();
-  ctx.fillStyle = 'rgba(120,100,210,.35)';
-  for (let s = 60; s < S_END - 20; s += 70) {
-    const a = loopPoint(s), b = loopPoint(s + 1);
-    ctx.save(); ctx.translate(a.x, a.y); ctx.rotate(Math.atan2(b.y - a.y, b.x - a.x));
-    ctx.beginPath(); ctx.moveTo(8, 0); ctx.lineTo(-6, -9); ctx.lineTo(-2, 0); ctx.lineTo(-6, 9); ctx.closePath(); ctx.fill();
-    ctx.restore();
   }
   ctx.restore();
   // doors
