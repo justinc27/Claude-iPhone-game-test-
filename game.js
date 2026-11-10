@@ -48,6 +48,25 @@ const STAFF = {
   tech: { name: 'Tech Tara', icon: '👩‍💻', cost: 8000, desc: 'Assembles PCs at the Service Station' },
 };
 const MAX_PLAYER_LV = 8;
+// Upgrades for hired staff
+const STAFF_UPGRADES = [
+  { id: 'cashierSpeed', staff: 'cashier', icon: '⚡', title: 'Faster Scanning', base: 400, growth: 1.9, max: 8,
+    desc: () => `Scans an item every ${cashierScanTime().toFixed(2)}s` },
+  { id: 'stockerSpeed', staff: 'stocker', icon: '👟', title: 'Stocker Shoes', base: 600, growth: 1.9, max: 8,
+    desc: () => `Walks ${Math.round(stockerSpeed() / 125 * 100)}% speed` },
+  { id: 'stockerCarry', staff: 'stocker', icon: '📦', title: 'Hand Truck', base: 800, growth: 2, max: 6,
+    desc: () => `Carries ${stockerCarry()} boxes per trip` },
+  { id: 'techSpeed', staff: 'tech', icon: '🔧', title: 'Power Tools', base: 4000, growth: 1.9, max: 8,
+    desc: () => `Builds a PC in ${techBuildTime().toFixed(1)}s` },
+];
+const STAFF_UP = Object.fromEntries(STAFF_UPGRADES.map(u => [u.id, u]));
+function staffLv(id) { return state.staffLv[id] || 0; }
+function staffUpCost(id) { const u = STAFF_UP[id]; return u.base * Math.pow(u.growth, staffLv(id)); }
+function cashierScanTime() { return 0.6 * Math.pow(0.84, staffLv('cashierSpeed')); }
+function stockerSpeed() { return 125 * (1 + 0.18 * staffLv('stockerSpeed')); }
+function stockerHandTime() { return Math.pow(0.85, staffLv('stockerSpeed')); }
+function stockerCarry() { return 4 + 2 * staffLv('stockerCarry'); }
+function techBuildTime() { return 8 * Math.pow(0.85, staffLv('techSpeed')); }
 // Floor pads where you hire staff by standing on them
 const HIRE_PADS = {
   cashier: { x: 268, y: 700, label: 'CASHIER' },
@@ -65,6 +84,7 @@ function freshState(keep = {}) {
     sec, speedLv: 0, carryLv: 0,
     staff: { cashier: false, stocker: false, tech: false },
     staffPaid: { cashier: 0, stocker: 0 },
+    staffLv: {},
     player: { x: 300, y: 600 },
     carry: [],
     rate: 0,
@@ -81,6 +101,7 @@ function load() {
     for (const sc of SECTIONS) merged.sec[sc.id] = Object.assign(base.sec[sc.id], (s.sec || {})[sc.id] || {});
     merged.staff = Object.assign(freshState().staff, s.staff || {});
     merged.staffPaid = Object.assign(freshState().staffPaid, s.staffPaid || {});
+    merged.staffLv = Object.assign({}, s.staffLv || {});
     return merged;
   } catch (e) { return null; }
 }
@@ -280,7 +301,7 @@ function updateCustomer(c, dt) {
 function updateRegister(dt) {
   const front = queue[0];
   const playerHere = dist(state.player, REGISTER) < 36;
-  const scanTime = playerHere ? 0.28 : state.staff.cashier ? 0.6 : 0;
+  const scanTime = playerHere ? 0.28 : state.staff.cashier ? cashierScanTime() : 0;
   if (!front || !scanTime || dist(front, queueSlot(0)) > 4) { serveTimer = 0; return; }
   serveTimer += dt;
   if (serveTimer >= scanTime) {
@@ -303,7 +324,7 @@ function updateService(dt) {
   if (!state.sec.svc.unlocked) return;
   const c = customers.find(x => x.state === 'svc' && !x.path.length);
   const playerHere = dist(state.player, SEC.svc.workPad) < 34;
-  const rate = playerHere ? 1 / 4 : state.staff.tech ? 1 / 8 : 0;
+  const rate = Math.max(playerHere ? 1 / 4 : 0, state.staff.tech ? 1 / techBuildTime() : 0);
   if (!c || !rate) return;
   buildProgress += rate * dt;
   if (Math.random() < dt * 6) fx.push({ type: 'spark', x: SEC.svc.bench.x + 30 + Math.random() * 60, y: SEC.svc.bench.y + 10, t: 0 });
@@ -416,6 +437,7 @@ function updateStocker(dt) {
   const n = npcs.stocker;
   if (!n) return;
   n.moving = false;
+  n.speed = stockerSpeed();
   if (!walk(n, dt)) return;
   n.timer += dt;
   if (n.job === 'idle') {
@@ -430,8 +452,8 @@ function updateStocker(dt) {
     n.path = route(n, need.s.crate);
   } else if (n.job === 'load') {
     const st = state.sec[n.target];
-    const want = Math.min(4, shelfCap(n.target) - st.stock);
-    if (n.carry.length < want && n.timer > 0.3) { n.carry.push(n.target); n.timer = 0; }
+    const want = Math.min(stockerCarry(), shelfCap(n.target) - st.stock);
+    if (n.carry.length < want && n.timer > 0.3 * stockerHandTime()) { n.carry.push(n.target); n.timer = 0; }
     if (n.carry.length >= want) {
       n.job = 'unload'; n.timer = 0;
       const f = SEC[n.target].front;
@@ -439,7 +461,7 @@ function updateStocker(dt) {
     }
   } else if (n.job === 'unload') {
     const st = state.sec[n.target];
-    if (n.timer > 0.25) {
+    if (n.timer > 0.25 * stockerHandTime()) {
       n.timer = 0;
       if (n.carry.length && st.stock < shelfCap(n.target)) { n.carry.pop(); st.stock++; }
       else { n.carry = []; n.job = 'idle'; }
@@ -892,6 +914,7 @@ function anyAffordable() {
   for (const k in STAFF) if (!state.staff[k] && staffAvailable(k) && state.money >= staffRemaining(k)) return true;
   if (state.speedLv < MAX_PLAYER_LV && state.money >= speedCost()) return true;
   if (state.carryLv < MAX_PLAYER_LV && state.money >= carryCost()) return true;
+  for (const u of STAFF_UPGRADES) if (state.staff[u.staff] && staffLv(u.id) < u.max && state.money >= staffUpCost(u.id)) return true;
   return false;
 }
 function staffRemaining(k) { return STAFF[k].cost - (state.staffPaid[k] || 0); }
@@ -922,6 +945,12 @@ function showUpgrades() {
       <div class="info"><div class="title">${s.name}</div><div class="desc">${avail ? s.desc + (HIRE_PADS[k] && !state.staff[k] ? ' · or hire on the store floor' : '') : 'Unlock the Service Station first'}</div></div>
       ${state.staff[k] ? '<button class="btn owned" disabled>Hired ✓</button>'
         : avail ? `<button class="btn green" data-act="hire" data-id="${k}" data-cost="${staffRemaining(k)}">Hire<small>${money$(staffRemaining(k))}</small></button>` : ''}</div>`;
+    if (state.staff[k]) for (const u of STAFF_UPGRADES.filter(x => x.staff === k)) {
+      const lv = staffLv(u.id);
+      html += `<div class="item sub"><div class="avatar" style="--c:#fff4d1">${u.icon}</div>
+        <div class="info"><div class="title">${u.title} <small>Lv ${lv}/${u.max}</small></div><div class="desc">${u.desc()}</div></div>
+        ${lv >= u.max ? '<button class="btn owned" disabled>MAX</button>' : `<button class="btn green" data-act="staffUp" data-id="${u.id}" data-cost="${staffUpCost(u.id)}">Buy<small>${money$(staffUpCost(u.id))}</small></button>`}</div>`;
+    }
   }
   html += `<div class="group">You</div>`;
   html += playerRow('speed', '👟', 'Running Shoes', `Walk speed Lv ${state.speedLv}/${MAX_PLAYER_LV}`, state.speedLv, speedCost());
@@ -1002,6 +1031,16 @@ document.addEventListener('click', e => {
     case 'speed':
       if (state.speedLv < MAX_PLAYER_LV && spend(speedCost())) { state.speedLv++; sfx.unlock(); showUpgrades(); }
       break;
+    case 'staffUp': {
+      const u = STAFF_UP[id];
+      if (u && state.staff[u.staff] && staffLv(id) < u.max && spend(staffUpCost(id))) {
+        state.staffLv[id] = staffLv(id) + 1;
+        sfx.unlock();
+        toast(`${u.icon} ${u.title} Lv ${state.staffLv[id]}: ${u.desc()}`);
+        showUpgrades();
+      }
+      break;
+    }
     case 'carry':
       if (state.carryLv < MAX_PLAYER_LV && spend(carryCost())) { state.carryLv++; sfx.unlock(); showUpgrades(); }
       break;
