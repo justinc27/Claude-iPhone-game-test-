@@ -78,7 +78,7 @@ const STAFF_UPGRADES = [
 ];
 const STAFF_UP = Object.fromEntries(STAFF_UPGRADES.map(u => [u.id, u]));
 function staffLv(id) { return state.staffLv[id] || 0; }
-function staffUpCost(id) { const u = STAFF_UP[id]; return u.base * Math.pow(u.growth, staffLv(id)); }
+function staffUpCost(id) { const u = STAFF_UP[id]; return Math.round(u.base * Math.pow(u.growth, staffLv(id))); }
 function cashierScanTime() { return 0.6 * Math.pow(0.84, staffLv('cashierSpeed')); }
 function stockerSpeed() { return 125 * (1 + 0.18 * staffLv('stockerSpeed')); }
 function stockerHandTime() { return Math.pow(0.85, staffLv('stockerSpeed')); }
@@ -130,6 +130,9 @@ function save() {
 const loaded = load();
 const isNewPlayer = !loaded;
 let state = loaded || freshState();
+state.money = Math.floor(state.money);
+for (const id in state.sec) state.sec[id].paid = Math.floor(state.sec[id].paid || 0);
+for (const k in state.staffPaid) state.staffPaid[k] = Math.floor(state.staffPaid[k] || 0);
 if (loaded && [{ x: 300, y: 770, w: 176, h: 90 }, { x: 26, y: 270, w: 548, h: 330 }].some(r => state.player.x > r.x && state.player.x < r.x + r.w && state.player.y > r.y && state.player.y < r.y + r.h)) state.player = { x: 300, y: 640 };
 
 // Runtime-only world objects
@@ -146,18 +149,20 @@ const npcs = {};
 // ---------- Economy ----------
 function price(id) {
   const L = state.sec[id].level;
-  return SEC[id].price * (1 + 0.25 * (L - 1)) * Math.pow(2, MILESTONES.filter(m => L >= m).length);
+  return Math.round(SEC[id].price * (1 + 0.25 * (L - 1)) * Math.pow(2, MILESTONES.filter(m => L >= m).length));
 }
-function levelCost(id) { return SEC[id].price * 12 * Math.pow(1.32, state.sec[id].level - 1); }
+function levelCost(id) { return Math.round(SEC[id].price * 12 * Math.pow(1.32, state.sec[id].level - 1)); }
 function shelfCap(id) { return Math.min(20, 6 + 2 * Math.floor((state.sec[id].level - 1) / 5)); }
 function playerSpeed() { return 165 + 20 * state.speedLv; }
 function carryCap() { return 4 + 2 * state.carryLv; }
-function speedCost() { return 80 * Math.pow(2, state.speedLv); }
-function carryCost() { return 120 * Math.pow(2.1, state.carryLv); }
+function speedCost() { return Math.round(80 * Math.pow(2, state.speedLv)); }
+function carryCost() { return Math.round(120 * Math.pow(2.1, state.carryLv)); }
 function unlockedParts() { return PARTS.filter(s => state.sec[s.id].unlocked); }
 
 let rateBucket = 0;
 function earn(amount, x, y) {
+  amount = Math.round(amount);
+  if (amount <= 0) return;
   state.money += amount;
   state.lifetime += amount;
   rateBucket += amount;
@@ -168,7 +173,7 @@ function earn(amount, x, y) {
 // ---------- Formatting ----------
 const SUFFIX = ['', 'K', 'M', 'B', 'T', 'Qa', 'Qi'];
 function fmt(n) {
-  if (n < 1000) return n % 1 === 0 ? String(n) : (n < 100 ? n.toFixed(2).replace(/\.?0+$/, '') : Math.floor(n).toString());
+  if (n < 1000) return String(Math.floor(n));
   const tier = Math.min(SUFFIX.length - 1, Math.floor(Math.log10(n) / 3));
   const v = n / Math.pow(1000, tier);
   return (v >= 100 ? v.toFixed(0) : v.toFixed(1)) + SUFFIX[tier];
@@ -504,22 +509,22 @@ function updatePlayer(dt) {
   for (const s of SECTIONS) {
     const st = state.sec[s.id];
     if (st.unlocked || !canUnlockNext(s.id)) continue;
-    if (inRect(p, padRect(s.pad)) && state.money > 0) {
-      const amt = Math.min(state.money, s.unlock - st.paid, Math.max(25, s.unlock / 1.6) * dt);
+    if (inRect(p, padRect(s.pad)) && state.money >= 1) {
+      const amt = Math.min(state.money, s.unlock - st.paid, Math.max(1, Math.round(Math.max(25, s.unlock / 1.6) * dt)));
       state.money -= amt; st.paid += amt;
       if (Math.random() < dt * 20) fx.push({ type: 'coin', x: p.x, y: p.y - 30, tx: s.pad.x, ty: s.pad.y, t: 0 });
-      if (st.paid >= s.unlock - 1e-6) unlockSection(s.id);
+      if (st.paid >= s.unlock) unlockSection(s.id);
     }
   }
   // Hire pads: money flows in while you stand on them
   for (const k in HIRE_PADS) {
     if (state.staff[k] || !staffAvailable(k)) continue;
     const pad = HIRE_PADS[k], cost = STAFF[k].cost;
-    if (inRect(p, padRect(pad)) && state.money > 0) {
-      const amt = Math.min(state.money, cost - state.staffPaid[k], Math.max(25, cost / 1.6) * dt);
+    if (inRect(p, padRect(pad)) && state.money >= 1) {
+      const amt = Math.min(state.money, cost - state.staffPaid[k], Math.max(1, Math.round(Math.max(25, cost / 1.6) * dt)));
       state.money -= amt; state.staffPaid[k] += amt;
       if (Math.random() < dt * 20) fx.push({ type: 'coin', x: p.x, y: p.y - 30, tx: pad.x, ty: pad.y, t: 0 });
-      if (state.staffPaid[k] >= cost - 1e-6) hireStaff(k);
+      if (state.staffPaid[k] >= cost) hireStaff(k);
     }
   }
 }
