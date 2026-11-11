@@ -108,6 +108,23 @@ button {
 }
 #hint.show { opacity: 1; transform: translate(-50%, 0); }
 #upgradeBtn { position: relative; font-size: 22px; }
+.tb-left { display: flex; gap: 6px; }
+#missionsBtn { position: relative; }
+#missionsBtn .dot, #upgradeBtn .dot {
+  position: absolute; top: -4px; right: -4px; width: 14px; height: 14px; border-radius: 50%;
+  background: var(--red); border: 2px solid #fff; display: none;
+}
+#missionsBtn.alert .dot { display: block; animation: pulse 1s infinite; }
+#eventBanner {
+  position: absolute; top: 10px; left: 50%; transform: translate(-50%, -12px);
+  max-width: calc(100% - 32px); padding: 8px 14px; border-radius: 14px; text-align: center;
+  background: linear-gradient(180deg, #ffb36b, #ff7a1a); color: #3d1600; font-size: 12px; font-weight: 600;
+  box-shadow: 0 4px 0 #b8580d; opacity: 0; width: max-content; transition: opacity .25s, transform .25s; pointer-events: none;
+}
+#eventBanner b { display: block; font-size: 15px; }
+#eventBanner.show { opacity: 1; transform: translate(-50%, 0); animation: bannerGlow 1.4s ease-in-out infinite; }
+.meter { height: 8px; border-radius: 4px; background: #ece8fb; margin: 4px 0 3px; overflow: hidden; }
+.meter i { display: block; height: 100%; background: linear-gradient(90deg, #7ef0a8, var(--green)); border-radius: 4px; }
 #upgradeBtn .dot {
   position: absolute; top: -4px; right: -4px; width: 14px; height: 14px; border-radius: 50%;
   background: var(--red); border: 2px solid #fff; display: none;
@@ -211,6 +228,7 @@ button {
 }
 .confetti { position: absolute; width: 10px; height: 14px; border-radius: 3px; animation: fall 1.4s ease-in forwards; }
 
+@keyframes bannerGlow { 50% { filter: brightness(1.12); } }
 @keyframes slideUp { from { transform: translateY(100%); } to { transform: none; } }
 @keyframes bump { 50% { transform: scale(1.08); } }
 @keyframes pulse { 50% { transform: scale(1.06); } }

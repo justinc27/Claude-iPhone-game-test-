@@ -17,14 +17,22 @@ You play a store clerk on the shop floor. **Drag anywhere on the screen** to wal
 | 🗄️ PC Cases | $120 | $25 |
 | 🖥️ Monitors | $600 | $60 |
 | 🎮 Graphics Cards | $2,500 | $140 |
-| 🛠️ Service Station | $10,000 | $400 per build |
+| 🛠️ Service Station | $10,000 | jobs (see below) |
+| 🧱 *Expand the store* | $25,000 | opens a new wing to the right |
+| 🧠 CPUs | $30,000 | $220 |
+| 💾 RAM & Storage | $75,000 | $350 |
+| 🪑 Gaming Chairs | $150,000 | $600 |
 
-- **Service Station:** some customers want a custom PC. Stand on the pink circle in front of the bench to assemble it, then they pay you.
-- **Upgrades (⬆️ button):** level up a section to raise its item price (x2 at levels 10, 25, 50 and 100, and bigger shelves). Hire staff: a **cashier** runs Lane 2, a **second cashier** ($3,000, after the first) runs Lane 1, a **stocker** refills shelves, and a **tech** builds PCs.
-- **Staff upgrades:** once someone is hired, the Upgrades menu lists their upgrades under their name: **Faster Scanning** (cashier), **Stocker Shoes** (stocker walks and handles boxes faster), **Hand Truck** (stocker carries 2 more boxes per level, up to 16), and **Power Tools** (tech builds faster).
-- **Hiring on the floor:** the blue **HIRE CASHIER** pad (beside the checkout; it turns into **HIRE CASHIER 2** once the first cashier is hired) and **HIRE STOCKER** pad (in the stockroom) work like unlock pads: stand on one and your cash pays for the hire. If you pay part on the floor, the Upgrades menu only charges the rest. You can also buy faster shoes and a bigger carrying stack.
+- **Cash piles:** when a cashier or the tech makes a sale, the cash stacks up on their counter or bench. Walk over to collect it. Sales you make yourself go straight into your pocket.
+- **Delivery truck:** stockroom crates hold a limited number of boxes. A truck pulls up to the loading dock (top of the store) and refills them every 40 seconds. Upgrade with **Bigger Deliveries** and **Faster Trucks** in the Upgrades menu.
+- **Service Station jobs:** customers bring a **Repair** (no parts), an **Upgrade** (one part, like a GPU) or a **Full Build** (case + GPU, plus CPU and RAM once unlocked). Carry the parts to the bench, then stand on the pink circle to work. The tech takes parts off the shelves on their own.
+- **Rush events:** every few minutes (once Monitors are unlocked): *GPU Launch Day*, *Black Friday* (double prices), *Build Season* (jobs pay double) or *Back to School*.
+- **Missions (📋 button):** 3 daily missions with cash rewards that reset at midnight, plus achievements that each give a ⭐ Star.
+- **Franchise:** in the Upgrades menu, sell your store for ⭐ Stars (based on lifetime earnings). Every Star adds 5% to all prices forever. You restart in a new location: Strip Mall → Shopping Mall → Warehouse → Flagship Store.
+- **Upgrades (⬆️ button):** level up a section to raise its item price (x2 at levels 10, 25, 50 and 100, and bigger shelves). Hire staff: a **cashier** runs Lane 2, a **second cashier** ($3,000, after the first) runs Lane 1, a **stocker** refills shelves, and a **tech** works the Service Station. Buy faster shoes and a bigger carrying stack for yourself.
+- **Hiring on the floor:** the blue **HIRE CASHIER** pad (beside the checkout; it turns into **HIRE CASHIER 2** once the first cashier is hired) and **HIRE STOCKER** pad (in the stockroom) work like unlock pads. If you pay part on the floor, the Upgrades menu only charges the rest.
 - A yellow arrow and hint point to what to do next while you're learning.
-- Progress saves automatically. With a cashier and a stocker hired, the store keeps earning while the app is closed (up to 2 hours).
+- All money is in whole dollars. Progress saves automatically. With a cashier and a stocker hired, the store keeps earning while the app is closed (up to 2 hours).
 
 ## Play it on an iPhone
 

@@ -21,7 +21,10 @@
 <body>
   <div id="app">
     <header id="topbar">
-      <button id="settingsBtn" class="icon-btn" aria-label="Settings">⚙️</button>
+      <div class="tb-left">
+        <button id="settingsBtn" class="icon-btn" aria-label="Settings">⚙️</button>
+        <button id="missionsBtn" class="icon-btn" aria-label="Missions">📋<i class="dot"></i></button>
+      </div>
       <div class="money-wrap">
         <div id="storeName">Byte Depot</div>
         <div id="money"><span class="coin">$</span><span id="moneyVal">0</span></div>
@@ -32,6 +35,7 @@
 
     <main id="stage">
       <canvas id="game" aria-label="Store floor. Drag anywhere to move your character."></canvas>
+      <div id="eventBanner" aria-live="polite"></div>
       <div id="hint"></div>
     </main>
   </div>
