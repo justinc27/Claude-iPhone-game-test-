@@ -59,19 +59,23 @@ button {
   justify-content: space-between;
   gap: 8px;
   padding: calc(var(--safe-top) + 10px) 14px 12px;
-  background: linear-gradient(180deg, rgba(0,0,0,.35), rgba(0,0,0,.1));
-  border-bottom: 3px solid rgba(255,255,255,.12);
+  /* see-through: the store (and the delivery truck) shows underneath */
+  position: absolute; top: 0; left: 0; right: 0;
+  background: transparent;
   color: #fff;
   z-index: 5;
+  pointer-events: none;           /* drags pass through to the game */
 }
+#topbar button { pointer-events: auto; }
 .money-wrap { text-align: center; flex: 1; min-width: 0; }
 #storeName {
-  font-size: 13px; font-weight: 600; letter-spacing: .5px; text-transform: uppercase;
-  opacity: .8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  font-size: 13px; font-weight: 700; letter-spacing: .5px; text-transform: uppercase;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  text-shadow: 0 1px 0 #2b2350, 0 0 6px rgba(20,8,60,.85);
 }
 #money {
   font-size: 34px; font-weight: 700; line-height: 1.1;
-  text-shadow: 0 3px 0 rgba(0,0,0,.35);
+  text-shadow: 0 3px 0 #2b2350, 0 0 10px rgba(20,8,60,.6);
   display: inline-flex; align-items: center; gap: 6px;
 }
 #money.bump { animation: bump .25s ease-out; }
@@ -83,11 +87,11 @@ button {
   box-shadow: 0 3px 0 #9c6b00, inset 0 -2px 0 rgba(0,0,0,.15);
   text-shadow: none;
 }
-#income { font-size: 14px; font-weight: 600; color: #9dffc6; }
+#income { font-size: 14px; font-weight: 700; color: #9dffc6; text-shadow: 0 1px 0 #1e5e36, 0 0 6px rgba(20,8,60,.85); }
 .icon-btn {
   width: 44px; height: 44px; border-radius: 14px;
-  background: rgba(255,255,255,.15); font-size: 22px;
-  box-shadow: 0 3px 0 rgba(0,0,0,.25);
+  background: rgba(43,35,80,.7); font-size: 22px;
+  box-shadow: 0 3px 0 rgba(0,0,0,.3);
 }
 .buy-mode {
   min-width: 56px; height: 44px; border-radius: 14px; padding: 0 10px;
@@ -116,7 +120,7 @@ button {
 }
 #missionsBtn.alert .dot { display: block; animation: pulse 1s infinite; }
 #eventBanner {
-  position: absolute; top: 10px; left: 50%; transform: translate(-50%, -12px);
+  position: absolute; top: calc(var(--safe-top) + 112px); left: 50%; transform: translate(-50%, -12px);
   max-width: calc(100% - 32px); padding: 8px 14px; border-radius: 14px; text-align: center;
   background: linear-gradient(180deg, #ffb36b, #ff7a1a); color: #3d1600; font-size: 12px; font-weight: 600;
   box-shadow: 0 4px 0 #b8580d; opacity: 0; width: max-content; transition: opacity .25s, transform .25s; pointer-events: none;

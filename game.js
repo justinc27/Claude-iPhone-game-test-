@@ -1026,7 +1026,9 @@ function render() {
   const vw = cssW / zoom, vh = cssH / zoom;
   const WW = worldW();
   const tx = vw >= WW ? WW / 2 : Math.max(vw / 2, Math.min(WW - vw / 2, state.player.x));
-  const ty = vh >= H ? H / 2 : Math.max(vh / 2 - 96, Math.min(H - vh / 2 + 40, state.player.y));
+  // The view always reaches up to the road, which shows through the see-through top bar
+  const top = ROAD_Y - 52, bottom = H + 30;
+  const ty = vh >= bottom - top ? (top + bottom) / 2 : Math.max(top + vh / 2, Math.min(bottom - vh / 2, state.player.y));
   cam.x += (tx - cam.x) * 0.15; cam.y += (ty - cam.y) * 0.15;
   ctx.setTransform(zoom * DPR, 0, 0, zoom * DPR, (cssW / 2 - cam.x * zoom) * DPR, (cssH / 2 - cam.y * zoom) * DPR);
 
@@ -1617,7 +1619,11 @@ function toast(msg) {
   setTimeout(() => el.remove(), 2700);
 }
 function showModal(html, sheet = false) {
-  $('#modalCard').innerHTML = html;
+  const card = $('#modalCard');
+  const refreshing = sheet && !$('#modal').classList.contains('hidden') && card.classList.contains('sheet');
+  const scroll = refreshing ? card.scrollTop : 0;
+  card.innerHTML = html;
+  card.scrollTop = scroll;
   $('#modalCard').classList.toggle('sheet', sheet);
   $('#modal').classList.toggle('as-sheet', sheet);
   $('#modal').classList.remove('hidden');
@@ -1636,17 +1642,15 @@ function showSettings() {
     <button class="btn disabled" data-act="close">Close</button>`);
 }
 
-document.addEventListener('click', e => {
-  const el = e.target.closest('[data-act]');
-  if (!el) return;
-  const { act, id } = el.dataset;
+function handleAction(el, act, id) {
   switch (act) {
     case 'level':
       if (spend(levelCost(id))) {
         state.sec[id].level++;
         sfx.unlock();
         const L = state.sec[id].level;
-        toast(MILESTONES.includes(L) ? `🏆 ${SEC[id].name} Lv ${L}! Prices x2` : `⬆️ ${SEC[id].name} Lv ${L}: ${SEC[id].item} now sells for ${money$(price(id))}`);
+        if (MILESTONES.includes(L)) toast(`🏆 ${SEC[id].name} Lv ${L}! Prices x2`);
+        else if (!holdingBuy) toast(`⬆️ ${SEC[id].name} Lv ${L}: ${SEC[id].item} now sells for ${money$(price(id))}`);
         showUpgrades();
       }
       break;
@@ -1661,7 +1665,7 @@ document.addEventListener('click', e => {
       if (u && state.staff[u.staff] && staffLv(id) < u.max && spend(staffUpCost(id))) {
         state.staffLv[id] = staffLv(id) + 1;
         sfx.unlock();
-        toast(`${u.icon} ${u.title} Lv ${state.staffLv[id]}: ${u.desc()}`);
+        if (!holdingBuy) toast(`${u.icon} ${u.title} Lv ${state.staffLv[id]}: ${u.desc()}`);
         showUpgrades();
       }
       break;
@@ -1721,7 +1725,38 @@ document.addEventListener('click', e => {
       save(); closeModal();
       break;
   }
+}
+document.addEventListener('click', e => {
+  const el = e.target.closest('[data-act]');
+  if (!el) return;
+  if (holdFired) { holdFired = false; return; }   // the hold already did the buying
+  handleAction(el, el.dataset.act, el.dataset.id);
 });
+
+// ---------- Hold a buy button to keep buying ----------
+const HOLD_ACTS = new Set(['level', 'staffUp', 'speed', 'carry', 'delivery', 'truck']);
+let holdTimer = null, holdFired = false, holdingBuy = false;
+function stopHold() { clearTimeout(holdTimer); holdTimer = null; holdingBuy = false; }
+$('#modalCard').addEventListener('pointerdown', e => {
+  const el = e.target.closest('[data-act]');
+  holdFired = false;
+  if (!el || !HOLD_ACTS.has(el.dataset.act)) return;
+  const { act, id } = el.dataset;
+  stopHold();
+  let delay = 220;
+  const step = () => {
+    holdingBuy = true;
+    const before = state.money;
+    handleAction(null, act, id);
+    holdFired = true;
+    if (state.money >= before) { stopHold(); return; }   // couldn't afford it, or it's maxed
+    delay = Math.max(35, delay * 0.82);                    // speeds up the longer you hold
+    holdTimer = setTimeout(step, delay);
+  };
+  holdTimer = setTimeout(step, 380);
+});
+['pointerup', 'pointercancel', 'blur'].forEach(ev => window.addEventListener(ev, stopHold));
+$('#modalCard').addEventListener('scroll', stopHold, { passive: true });
 $('#upgradeBtn').addEventListener('click', showUpgrades);
 $('#settingsBtn').addEventListener('click', showSettings);
 $('#missionsBtn').addEventListener('click', () => { updateMissions(); showMissions(); });
