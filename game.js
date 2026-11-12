@@ -130,6 +130,7 @@ function freshState(keep = {}) {
     staff: { cashier: false, cashier2: false, stocker: false, tech: false },
     staffPaid: { cashier: 0, cashier2: 0, stocker: 0 },
     staffLv: {},
+    admin: keep.admin || { unlimited: false, speed: 1, savedMoney: 0 },
     player: { x: 300, y: 640 },
     carry: [],
     rate: 0,
@@ -201,6 +202,7 @@ function bank(amount, x, y) {
   amount = Math.round(amount);
   if (amount <= 0) return;
   state.money += amount;
+  if (state.admin && state.admin.unlimited) state.admin.savedMoney += amount;   // real earnings are kept
   state.lifetime += amount;
   track('earn', null, amount);
   if (x !== undefined) fx.push({ type: 'text', text: '+' + money$(amount), x, y, t: 0, color: '#2ecc71' });
@@ -604,6 +606,7 @@ function doFranchise() {
     storeName: state.storeName, sound: state.sound, lifetime: state.lifetime, served: state.served, built: state.built,
     restocked: state.restocked, sold: state.sold, stars: state.stars + gain, starsClaimed: state.starsClaimed + gain,
     franchises: state.franchises + 1, achDone: state.achDone, achClaimed: state.achClaimed, daily: state.daily,
+    admin: { ...state.admin, savedMoney: 0 },
   };
   state = freshState(keep);
   customers = []; queues = [[], []]; fx = []; buildProgress = 0;
@@ -768,7 +771,7 @@ function updatePlayer(dt) {
     const st = state.sec[s.id];
     if (st.unlocked || !canUnlockNext(s.id)) continue;
     if (inRect(p, padRect(s.pad)) && state.money >= 1) {
-      const amt = Math.min(state.money, s.unlock - st.paid, Math.max(1, Math.round(Math.max(25, s.unlock / 1.6) * dt)));
+      const amt = Math.min(state.money, s.unlock - st.paid, (state.admin.unlimited ? Infinity : Math.max(1, Math.round(Math.max(25, s.unlock / 1.6) * dt))));
       state.money -= amt; st.paid += amt;
       if (Math.random() < dt * 20) fx.push({ type: 'coin', x: p.x, y: p.y - 30, tx: s.pad.x, ty: s.pad.y, t: 0 });
       if (st.paid >= s.unlock) unlockSection(s.id);
@@ -776,7 +779,7 @@ function updatePlayer(dt) {
   }
   // Expansion pad
   if (!state.expanded && state.sec.svc.unlocked && inRect(p, padRect(EXPANSION.pad, 110, 60)) && state.money >= 1) {
-    const amt = Math.min(state.money, EXPANSION.cost - state.expandPaid, Math.max(1, Math.round(EXPANSION.cost / 1.6 * dt)));
+    const amt = Math.min(state.money, EXPANSION.cost - state.expandPaid, (state.admin.unlimited ? Infinity : Math.max(1, Math.round(EXPANSION.cost / 1.6 * dt))));
     state.money -= amt; state.expandPaid += amt;
     if (Math.random() < dt * 20) fx.push({ type: 'coin', x: p.x, y: p.y - 30, tx: EXPANSION.pad.x, ty: EXPANSION.pad.y, t: 0 });
     if (state.expandPaid >= EXPANSION.cost) expandStore();
@@ -786,7 +789,7 @@ function updatePlayer(dt) {
     if (state.staff[k] || !staffAvailable(k)) continue;
     const pad = HIRE_PADS[k], cost = STAFF[k].cost;
     if (inRect(p, padRect(pad)) && state.money >= 1) {
-      const amt = Math.min(state.money, cost - state.staffPaid[k], Math.max(1, Math.round(Math.max(25, cost / 1.6) * dt)));
+      const amt = Math.min(state.money, cost - state.staffPaid[k], (state.admin.unlimited ? Infinity : Math.max(1, Math.round(Math.max(25, cost / 1.6) * dt))));
       state.money -= amt; state.staffPaid[k] += amt;
       if (Math.random() < dt * 20) fx.push({ type: 'coin', x: p.x, y: p.y - 30, tx: pad.x, ty: pad.y, t: 0 });
       if (state.staffPaid[k] >= cost) hireStaff(k);
@@ -937,8 +940,8 @@ function updateStocker(dt) {
 }
 
 // ---------- Main update ----------
-function update(dt) {
-  updatePlayer(dt);
+function update(dt, movePlayer = true) {
+  if (movePlayer) updatePlayer(dt);
   ensureNpcs();
   updateStocker(dt);
   updateTruck(dt);
@@ -1490,7 +1493,7 @@ function updateHud(dt) {
   if (hudTimer < 0.25) return;
   hudTimer = 0;
   $('#incomeVal').textContent = money$(state.rate * 60);
-  $('#storeName').textContent = state.storeName;
+  $('#storeName').textContent = (adminActive() ? `🛠️ ADMIN${adminSpeed() > 1 ? ' ' + adminSpeed() + 'x' : ''} · ` : '') + state.storeName;
   currentObjective = state.lifetime < 4000 || (queues[0].length && !state.staff.cashier) ? objective() : null;
   const hint = $('#hint');
   hint.textContent = currentObjective ? currentObjective.text : '';
@@ -1628,6 +1631,7 @@ function showSettings() {
     <input id="nameInput" maxlength="24" value="${state.storeName.replace(/"/g, '&quot;')}">
     <button class="btn green" data-act="saveName">Save name</button>
     <button class="btn" data-act="toggleSound">Sound: ${state.sound ? 'ON 🔊' : 'OFF 🔇'}</button>
+    <button class="btn" data-act="admin">🛠️ Admin tools (testing)</button>
     <button class="btn danger" data-act="askReset">Reset all progress</button>
     <button class="btn disabled" data-act="close">Close</button>`);
 }
@@ -1695,6 +1699,16 @@ document.addEventListener('click', e => {
       break;
     }
     case 'toggleSound': state.sound = !state.sound; showSettings(); break;
+    case 'admin': showAdmin(); break;
+    case 'adminMoney': adminSetUnlimited(!state.admin.unlimited); showAdmin(); break;
+    case 'adminSpeed': state.admin.speed = +id; toast(`⏩ Game speed ${id}x`); showAdmin(); break;
+    case 'adminUnlock': adminUnlockAll(); showAdmin(); break;
+    case 'adminHire': adminHireAll(); showAdmin(); break;
+    case 'adminFill': adminFill(); showAdmin(); break;
+    case 'adminTruck': if (truck.phase === 'away') truckTimer = 0; toast('🚚 Truck is on its way'); closeModal(); break;
+    case 'adminEvent': adminEvent(); closeModal(); break;
+    case 'adminLifetime': state.lifetime += 1e6; toast('📈 +$1M lifetime earnings (for testing Franchise)'); showAdmin(); break;
+    case 'adminMissions': if (state.daily) for (const m of state.daily.list) m.progress = m.target; toast('📋 Daily missions completed'); showAdmin(); break;
     case 'askReset':
       showModal(`<div class="emoji">⚠️</div><h2>Reset everything?</h2><p>This wipes all progress.</p>
         <button class="btn danger" data-act="confirmReset">Yes, reset</button><button class="btn disabled" data-act="close">Cancel</button>`);
@@ -1712,6 +1726,62 @@ $('#upgradeBtn').addEventListener('click', showUpgrades);
 $('#settingsBtn').addEventListener('click', showSettings);
 $('#missionsBtn').addEventListener('click', () => { updateMissions(); showMissions(); });
 $('#modal').addEventListener('click', e => { if (e.target.id === 'modal') closeModal(); });
+
+// ---------- Admin tools (for testing) ----------
+const ADMIN_MONEY = 999e9;
+function adminSpeed() { return (state.admin && state.admin.speed) || 1; }
+function adminActive() { return state.admin.unlimited || adminSpeed() > 1; }
+function adminSetUnlimited(on) {
+  if (on === state.admin.unlimited) return;
+  if (on) { state.admin.savedMoney = state.money; state.money = ADMIN_MONEY; toast('💸 Unlimited money ON'); }
+  else { state.money = state.admin.savedMoney || 0; toast(`💸 Unlimited money OFF: back to ${money$(state.money)}`); }
+  state.admin.unlimited = on;
+}
+// Keep the balance topped up; admin money never counts as earnings
+function adminTick() { if (state.admin.unlimited && state.money < ADMIN_MONEY) state.money = ADMIN_MONEY; }
+function adminUnlockAll() {
+  state.expanded = true; state.expandPaid = EXPANSION.cost;
+  for (const s of SECTIONS) {
+    const st = state.sec[s.id];
+    if (!st.unlocked) { st.unlocked = true; st.paid = s.unlock; if (s.shelf) { st.stock = shelfCap(s.id); state.crates[s.id] = crateMax(); } pushOut(state.player, s.shelf || s.bench); }
+  }
+  rebuildGrid(); confetti();
+  toast('🔓 Every section unlocked and the store expanded');
+}
+function adminHireAll() {
+  for (const k in STAFF) { state.staff[k] = true; if (state.staffPaid[k] !== undefined) state.staffPaid[k] = STAFF[k].cost; }
+  toast('👥 All staff hired');
+}
+function adminFill() {
+  for (const s of unlockedParts()) { state.sec[s.id].stock = shelfCap(s.id); state.crates[s.id] = crateMax(); }
+  toast('📦 Shelves and crates full');
+}
+let adminEventIdx = 0;
+function adminEvent() {
+  const opts = EVENTS.filter(e => e.ok());
+  if (!opts.length) { toast('Unlock PC Cases first to start events'); return; }
+  rushEvent = opts[adminEventIdx++ % opts.length]; eventLeft = rushEvent.dur;
+  toast(`${rushEvent.icon} ${rushEvent.name} ${rushEvent.desc}`);
+}
+function showAdmin() {
+  const a = state.admin;
+  const row = (act, icon, title, desc, label, on) => `<div class="item"><div class="avatar" style="--c:#ffe1e2">${icon}</div>
+    <div class="info"><div class="title">${title}</div><div class="desc">${desc}</div></div>
+    <button class="btn ${on === false ? 'disabled' : 'green'}" data-act="${act}">${label}</button></div>`;
+  let html = `<div class="sheet-head"><h2>Admin tools</h2><button class="icon-btn small" data-act="close" aria-label="Close">✕</button></div>
+    <div class="group">For testing <span>Admin money never counts toward Stars or achievements</span></div>`;
+  html += row('adminMoney', '💸', 'Unlimited money', a.unlimited ? `On. Your real balance (${money$(a.savedMoney)}) comes back when you turn it off.` : 'Your balance stays topped up so everything is free.', a.unlimited ? 'ON' : 'OFF', a.unlimited);
+  html += `<div class="item"><div class="avatar" style="--c:#ffe1e2">⏩</div><div class="info"><div class="title">Game speed</div><div class="desc">Shoppers, staff, trucks and timers run faster. You walk at normal speed.</div>
+    <div class="speed-row">${[1, 2, 5, 10].map(n => `<button class="btn ${a.speed === n ? 'green' : 'disabled'}" data-act="adminSpeed" data-id="${n}">${n}x</button>`).join('')}</div></div></div>`;
+  html += row('adminUnlock', '🔓', 'Unlock everything', 'Expands the store and unlocks all 8 sections', 'Unlock');
+  html += row('adminHire', '👥', 'Hire all staff', 'Both cashiers, the stocker and the tech', 'Hire');
+  html += row('adminFill', '📦', 'Fill shelves & crates', 'Every unlocked shelf and crate to the top', 'Fill');
+  html += row('adminTruck', '🚚', 'Call the truck now', truckStatus(), 'Call');
+  html += row('adminEvent', '🎉', 'Start a rush event', rushEvent ? `Running: ${rushEvent.name}` : 'Cycles through the events you have unlocked', 'Start');
+  html += row('adminLifetime', '📈', '+$1M lifetime earnings', `For testing Franchise. Claimable now: ${claimableStars()} ⭐`, 'Add');
+  html += row('adminMissions', '📋', 'Finish daily missions', 'Fills today\'s 3 missions so you can claim them', 'Finish');
+  showModal(html, true);
+}
 
 // ---------- Offline earnings ----------
 function applyOffline() {
@@ -1739,9 +1809,13 @@ let last = performance.now(), saveTimer = 0;
 function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
-  time += dt;
-  update(dt);
-  updateRate(dt);
+  const steps = adminSpeed();
+  for (let i = 0; i < steps; i++) {
+    time += dt;
+    update(dt, i === 0);   // you always move at normal speed
+    updateRate(dt);
+    adminTick();
+  }
   updateHud(dt);
   render();
   saveTimer += dt;

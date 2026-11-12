@@ -35,6 +35,16 @@ You play a store clerk on the shop floor. **Drag anywhere on the screen** to wal
 - A yellow arrow and hint point to what to do next while you're learning.
 - All money is in whole dollars. Progress saves automatically. With a cashier and a stocker hired, the store keeps earning while the app is closed (up to 2 hours).
 
+## Admin tools (for testing)
+
+Open **⚙️ Settings → 🛠️ Admin tools**:
+
+- **Unlimited money:** your balance stays topped up and floor pads complete instantly. Turning it off restores your real balance, plus anything you really earned meanwhile. Admin money never counts toward lifetime earnings, Stars or achievements.
+- **Game speed:** 1x / 2x / 5x / 10x for shoppers, staff, trucks and timers (your character keeps normal speed).
+- **Shortcuts:** unlock everything, hire all staff, fill shelves & crates, call the truck, start a rush event, add $1M lifetime earnings (to test Franchise), finish today's missions.
+
+While admin tools are active, the store name at the top shows **🛠️ ADMIN**.
+
 ## Play it on an iPhone
 
 The game is a Progressive Web App (plain HTML/CSS/JS, nothing to build).
