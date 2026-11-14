@@ -352,6 +352,7 @@ function walk(o, dt) {
 const SHIRTS = ['#ff6b6b', '#ffd166', '#06d6a0', '#118ab2', '#ef476f', '#8338ec', '#fb8500', '#3a86ff'];
 const SKINS = ['#f5d0a9', '#e0ac69', '#c68642', '#8d5524', '#ffdbac'];
 const HAIR = ['#2b1d0e', '#6b3e1b', '#e8c170', '#111', '#b5542b', '#999'];
+const PANTS = ['#2b2350', '#3d5a80', '#5c4033', '#4a4e69', '#264653', '#6d597a'];
 // Where a shopper stands to grab something from a section
 function makeStop(id) {
   const r = Math.random(), side = Math.random() < 0.5;
@@ -390,6 +391,7 @@ function spawnCustomer() {
     shirt: SHIRTS[Math.floor(Math.random() * SHIRTS.length)],
     skin: SKINS[Math.floor(Math.random() * SKINS.length)],
     hair: HAIR[Math.floor(Math.random() * HAIR.length)],
+    pants: PANTS[Math.floor(Math.random() * PANTS.length)], style: Math.floor(Math.random() * 4),
     wants: [], stops: [], cart: [], idx: 0, going: -1, phase: 'walk',
     timer: 0, patience: 14, state: 'shop', scanned: 0, mood: null, face: 1,
   };
@@ -964,7 +966,7 @@ function update(dt, movePlayer = true) {
 
 // ---------- Rendering ----------
 const canvas = document.getElementById('game');
-const ctx = canvas.getContext('2d');
+let ctx = canvas.getContext('2d');
 let DPR = 1, zoom = 1, cssW = 0, cssH = 0, cam = { x: 300, y: 600 };
 function resize() {
   const r = canvas.getBoundingClientRect();
@@ -1053,26 +1055,97 @@ function render() {
 
   drawFx();
   drawObjective();
+  drawVignette();
 }
 
-function drawFloor() {
-  // walls
-  rr(0, 0, W_FULL, H, 18); ctx.fillStyle = theme().wall; ctx.fill();
-  // tiles
+// A soft drop shadow under furniture (light comes from the top left)
+function softShadow(r, radius = 10) {
+  for (let i = 0; i < 4; i++) {
+    rr(r.x + 3 - i * 2, r.y + 7 - i, r.w + i * 4, r.h + i * 2 + 2, radius + i * 2);
+    ctx.fillStyle = 'rgba(20,10,50,.055)'; ctx.fill();
+  }
+}
+const LIGHTS = [{ x: 150, y: 330 }, { x: 450, y: 330 }, { x: 300, y: 560 }, { x: 150, y: 800 }, { x: 450, y: 800 }, { x: 760, y: 330 }, { x: 760, y: 640 }, { x: 900, y: 860 }];
+// The floor, wall trim, light pools and furniture shadows only change when the store does,
+// so they're drawn once into an image and reused every frame.
+let floorCache = null, floorKey = '';
+function buildFloor() {
+  const sc = Math.min(2, Math.max(0.5, zoom * DPR));
+  const c = document.createElement('canvas');
+  c.width = Math.ceil(W_FULL * sc); c.height = Math.ceil(H * sc);
+  const main = ctx;
+  ctx = c.getContext('2d');
+  ctx.scale(sc, sc);
+  const T = theme();
+  // walls with a light top edge
+  rr(0, 0, W_FULL, H, 18); ctx.fillStyle = T.wall; ctx.fill();
+  rr(4, 4, W_FULL - 8, H - 8, 15); ctx.strokeStyle = 'rgba(255,255,255,.14)'; ctx.lineWidth = 3; ctx.stroke();
   ctx.save();
   rr(16, 16, W_FULL - 32, H - 32, 10); ctx.clip();
+  // tiles, grout and a little speckle
   for (let y = 16; y < H; y += 40) for (let x = 16; x < W_FULL; x += 40) {
-    ctx.fillStyle = ((x + y) / 40) % 2 === 0 ? theme().a : theme().b;
+    ctx.fillStyle = ((x + y) / 40) % 2 === 0 ? T.a : T.b;
     ctx.fillRect(x, y, 40, 40);
+    let h = (x * 73856093) ^ (y * 19349663);
+    ctx.fillStyle = 'rgba(43,35,80,.05)';
+    for (let k = 0; k < 3; k++) { h = (h * 1103515245 + 12345) & 0x7fffffff; ctx.fillRect(x + (h % 36) + 2, y + ((h >> 8) % 36) + 2, 2, 2); }
   }
+  ctx.strokeStyle = 'rgba(43,35,80,.07)'; ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let x = 16; x <= W_FULL; x += 40) { ctx.moveTo(x, 16); ctx.lineTo(x, H); }
+  for (let y = 16; y <= H; y += 40) { ctx.moveTo(16, y); ctx.lineTo(W_FULL, y); }
+  ctx.stroke();
+  // warm pools of light under the ceiling lights
+  for (const l of LIGHTS) {
+    const g = ctx.createRadialGradient(l.x, l.y, 10, l.x, l.y, 190);
+    g.addColorStop(0, 'rgba(255,248,225,.45)'); g.addColorStop(1, 'rgba(255,248,225,0)');
+    ctx.fillStyle = g; ctx.fillRect(l.x - 190, l.y - 190, 380, 380);
+  }
+  // shading where the floor meets the walls
+  const edge = (x0, y0, x1, y1, w, h) => {
+    const g = ctx.createLinearGradient(x0, y0, x1, y1);
+    g.addColorStop(0, 'rgba(43,35,80,.16)'); g.addColorStop(1, 'rgba(43,35,80,0)');
+    ctx.fillStyle = g; ctx.fillRect(Math.min(x0, x1), Math.min(y0, y1), w, h);
+  };
+  edge(0, 16, 0, 48, W_FULL, 32);
+  edge(0, H - 16, 0, H - 48, W_FULL, 32);
+  edge(16, 0, 48, 0, 32, H);
+  edge(W_FULL - 16, 0, W_FULL - 48, 0, 32, H);
+  // shadows under the furniture that's in the store
+  for (const r of COUNTERS) softShadow(r, 9);
+  for (const s of PARTS) if (state.sec[s.id].unlocked) softShadow(s.shelf);
+  if (state.sec.svc.unlocked) softShadow(SEC.svc.bench);
   ctx.restore();
-  // doors
+  // crisp baseboard line
+  rr(16, 16, W_FULL - 32, H - 32, 10); ctx.strokeStyle = 'rgba(20,10,50,.22)'; ctx.lineWidth = 2; ctx.stroke();
+  // doors and the entrance mat
   ctx.fillStyle = '#8fd3ff';
   ctx.fillRect(ENTRANCE.x, H - 18, ENTRANCE.w, 18);
   ctx.fillRect(EXIT.x, H - 18, EXIT.w, 18);
   text('ENTRANCE', ENTRANCE.x + ENTRANCE.w / 2, H - 9, 11, '#1d4e74');
   text('EXIT', EXIT.x + EXIT.w / 2, H - 9, 11, '#1d4e74');
-  rr(ENTRANCE.x + 15, H - 66, ENTRANCE.w - 30, 42, 8); ctx.fillStyle = '#d8d0f5'; ctx.fill();
+  rr(ENTRANCE.x + 15, H - 66, ENTRANCE.w - 30, 42, 8); ctx.fillStyle = 'rgba(120,100,200,.22)'; ctx.fill();
+  ctx.strokeStyle = 'rgba(120,100,200,.35)'; ctx.lineWidth = 2; ctx.stroke();
+  ctx = main;
+  floorCache = c;
+}
+function drawFloor() {
+  const key = [state.franchises % THEMES.length, state.expanded, ...SECTIONS.map(s => state.sec[s.id].unlocked ? 1 : 0), Math.round(zoom * DPR * 100)].join(',');
+  if (key !== floorKey || !floorCache) { buildFloor(); floorKey = key; }
+  ctx.drawImage(floorCache, 0, 0, W_FULL, H);
+}
+// A gentle darkening around the screen edges
+let vignette = null, vignetteKey = '';
+function drawVignette() {
+  const key = canvas.width + 'x' + canvas.height;
+  if (key !== vignetteKey) {
+    const w = canvas.width, h = canvas.height;
+    vignette = ctx.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.35, w / 2, h / 2, Math.max(w, h) * 0.75);
+    vignette.addColorStop(0, 'rgba(20,8,60,0)'); vignette.addColorStop(1, 'rgba(20,8,60,.32)');
+    vignetteKey = key;
+  }
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.fillStyle = vignette; ctx.fillRect(0, 0, canvas.width, canvas.height);
 }
 
 function drawRoad() {
@@ -1094,8 +1167,11 @@ function drawTruck() {
   for (const wx of [x - 64, x - 8, x + 54]) { ctx.beginPath(); ctx.arc(wx, y + 24, 8, 0, Math.PI * 2); ctx.fill(); }
 }
 function drawWalls() {
-  ctx.fillStyle = theme().wall;
-  for (const r of (state.expanded ? DIVIDER_OPEN : DIVIDER_CLOSED)) { rr(r.x, r.y, r.w, r.h, 6); ctx.fill(); }
+  for (const r of (state.expanded ? DIVIDER_OPEN : DIVIDER_CLOSED)) {
+    softShadow(r, 6);
+    rr(r.x, r.y, r.w, r.h, 6); ctx.fillStyle = theme().wall; ctx.fill();
+    rr(r.x + 3, r.y + 3, r.w - 6, Math.max(0, r.h - 6), 4); ctx.strokeStyle = 'rgba(255,255,255,.14)'; ctx.lineWidth = 2; ctx.stroke();
+  }
   if (!state.expanded) {
     // what's behind the wall
     ctx.fillStyle = '#2a1f5c'; ctx.fillRect(612, 0, W_FULL - 612, H);
@@ -1128,6 +1204,7 @@ function drawStockroom() {
   text('STOCKROOM  ·  ' + truckStatus(), 300, 30, 12, '#7a6a35');
   for (const s of PARTS) {
     const r = crateRect(s);
+    softShadow(r);
     const on = state.sec[s.id].unlocked;
     ctx.globalAlpha = on ? 1 : 0.3;
     rr(r.x, r.y + 6, r.w, r.h, 10); ctx.fillStyle = '#8a6a2f'; ctx.fill();
@@ -1319,41 +1396,101 @@ function drawHirePads() {
   }
 }
 
+// Lighten (amt > 0) or darken (amt < 0) a #rrggbb colour
+function shade(hex, amt) {
+  const n = parseInt(hex.slice(1), 16);
+  const f = v => Math.round(amt < 0 ? v * (1 + amt) : v + (255 - v) * amt);
+  return `rgb(${f(n >> 16)},${f((n >> 8) & 255)},${f(n & 255)})`;
+}
+const OUTLINE = 'rgba(43,35,80,.6)';
 function drawPerson(o, kind) {
-  const bob = o.moving ? Math.sin(time * 14 + (o.x + o.y) * 0.05) * 2 : 0;
-  const x = o.x, y = o.y;
-  // shadow
-  ctx.beginPath(); ctx.ellipse(x, y + 4, 14, 6, 0, 0, Math.PI * 2); ctx.fillStyle = 'rgba(0,0,0,.18)'; ctx.fill();
-  // legs
-  const step = o.moving ? Math.sin(time * 14 + x * 0.1) * 4 : 0;
-  ctx.fillStyle = '#2b2350';
-  rr(x - 8, y - 8 + step * 0.3, 6, 12, 3); ctx.fill();
-  rr(x + 2, y - 8 - step * 0.3, 6, 12, 3); ctx.fill();
-  // body
-  const shirt = kind === 'player' ? '#3a86ff' : o.shirt;
-  rr(x - 12, y - 28 + bob, 24, 24, 9); ctx.fillStyle = shirt; ctx.fill();
-  if (kind !== 'cust') { rr(x - 7, y - 24 + bob, 14, 16, 4); ctx.fillStyle = kind === 'player' ? '#ffc83d' : 'rgba(255,255,255,.6)'; ctx.fill(); }
-  // head
-  const hy = y - 38 + bob;
-  ctx.beginPath(); ctx.arc(x, hy, 11, 0, Math.PI * 2); ctx.fillStyle = o.skin || '#f5d0a9'; ctx.fill();
-  // hair or cap
-  ctx.beginPath(); ctx.arc(x, hy - 3, 11, Math.PI, 0); ctx.fillStyle = kind === 'player' ? '#ff5a5f' : (o.cap || o.hair); ctx.fill();
-  if (kind !== 'cust') { rr(x + (o.face || 1) * 2 - 8 + (o.face || 1) * 6, hy - 6, 14, 4, 2); ctx.fill(); }
-  // eyes
-  ctx.fillStyle = '#2b2350';
-  const ex = (o.face || 1) * 2;
-  ctx.beginPath(); ctx.arc(x - 4 + ex, hy + 1, 1.8, 0, Math.PI * 2); ctx.arc(x + 4 + ex, hy + 1, 1.8, 0, Math.PI * 2); ctx.fill();
-  // carried boxes
+  const x = o.x, y = o.y, face = o.face || 1;
+  const ph = time * 12 + (o.x * 0.7 + o.y * 0.3) * 0.05;
+  const walk = o.moving ? Math.sin(ph) : 0;
+  const bob = o.moving ? -Math.abs(Math.sin(ph)) * 2.5 : Math.sin(time * 2 + x * 0.01) * 0.6;
   const stack = kind === 'player' ? state.carry : (o.carry || []);
+  const shirt = kind === 'player' ? '#3a86ff' : o.shirt;
+  const pants = kind === 'cust' ? (o.pants || '#2b2350') : '#2b2350';
+  const skin = o.skin || '#f5d0a9';
+  const hair = o.hair || '#2b1d0e';
+  // soft shadow
+  const sg = ctx.createRadialGradient(x, y + 2, 2, x, y + 2, 17);
+  sg.addColorStop(0, 'rgba(20,10,50,.34)'); sg.addColorStop(1, 'rgba(20,10,50,0)');
+  ctx.fillStyle = sg; ctx.beginPath(); ctx.ellipse(x, y + 2, 17, 7, 0, 0, Math.PI * 2); ctx.fill();
+  // legs + shoes (step in turn while walking)
+  const liftL = Math.max(0, walk) * 3, liftR = Math.max(0, -walk) * 3;
+  ctx.fillStyle = pants;
+  rr(x - 7, y - 13 - liftL, 6, 12, 3); ctx.fill();
+  rr(x + 1, y - 13 - liftR, 6, 12, 3); ctx.fill();
+  ctx.fillStyle = '#1d1640';
+  ctx.beginPath(); ctx.ellipse(x - 4 + face, y - 1 - liftL, 4.5, 2.6, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(x + 4 + face, y - 1 - liftR, 4.5, 2.6, 0, 0, Math.PI * 2); ctx.fill();
+  // arms: swing while walking, lifted when holding boxes
+  const shY = y - 26 + bob;
+  const handsUp = stack.length > 0;
+  const hand = side => handsUp
+    ? { x: x + side * 9, y: y - 47 + bob }
+    : { x: x + side * 13 + side * walk * face * 4, y: y - 13 + bob - Math.abs(walk) };
+  const arm = side => {
+    const h = hand(side);
+    ctx.strokeStyle = shade(shirt, -0.12); ctx.lineWidth = 5.5; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(x + side * 9, shY); ctx.lineTo(h.x, h.y); ctx.stroke();
+    ctx.beginPath(); ctx.arc(h.x, h.y, 3, 0, Math.PI * 2); ctx.fillStyle = skin; ctx.fill();
+  };
+  // long hair falls behind the head
+  const hy = y - 40 + bob;
+  if (kind === 'cust' && o.style === 1) { rr(x - 12, hy - 4, 24, 20, 9); ctx.fillStyle = hair; ctx.fill(); }
+  // body with soft two-tone shading
+  const bg = ctx.createLinearGradient(x, y - 31 + bob, x, y - 10 + bob);
+  bg.addColorStop(0, shade(shirt, 0.18)); bg.addColorStop(1, shade(shirt, -0.12));
+  rr(x - 11, y - 31 + bob, 22, 21, 8); ctx.fillStyle = bg; ctx.fill();
+  ctx.strokeStyle = OUTLINE; ctx.lineWidth = 1.5; ctx.stroke();
+  if (kind === 'player') {
+    rr(x - 7, y - 28 + bob, 14, 15, 4); ctx.fillStyle = '#ffc83d'; ctx.fill(); ctx.strokeStyle = 'rgba(122,75,0,.5)'; ctx.lineWidth = 1; ctx.stroke();
+    rr(x - 4, y - 25 + bob, 8, 4, 1.5); ctx.fillStyle = '#fff'; ctx.fill();
+  } else if (kind === 'staff') {
+    rr(x + 2, y - 27 + bob, 6, 4, 1.5); ctx.fillStyle = '#fff'; ctx.fill();
+  }
+  arm(-1); arm(1);
+  // head
+  ctx.beginPath(); ctx.arc(x, hy, 10.5, 0, Math.PI * 2); ctx.fillStyle = skin; ctx.fill();
+  ctx.strokeStyle = OUTLINE; ctx.lineWidth = 1.5; ctx.stroke();
+  // cheeks, eyes, mouth
+  const ex = face * 2;
+  ctx.fillStyle = 'rgba(255,120,140,.35)';
+  ctx.beginPath(); ctx.arc(x - 6 + ex, hy + 4, 2.2, 0, Math.PI * 2); ctx.arc(x + 6 + ex, hy + 4, 2.2, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#2b2350';
+  ctx.beginPath(); ctx.arc(x - 3.5 + ex, hy + 0.5, 1.9, 0, Math.PI * 2); ctx.arc(x + 3.5 + ex, hy + 0.5, 1.9, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#fff';
+  ctx.beginPath(); ctx.arc(x - 2.9 + ex, hy - 0.2, 0.7, 0, Math.PI * 2); ctx.arc(x + 4.1 + ex, hy - 0.2, 0.7, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = '#2b2350'; ctx.lineWidth = 1.2; ctx.lineCap = 'round';
+  ctx.beginPath();
+  if (o.mood === 'sad' && o.moodT < 1.5) ctx.arc(x + ex, hy + 7, 2.6, Math.PI * 1.15, Math.PI * 1.85);
+  else ctx.arc(x + ex, hy + 3.6, 2.6, Math.PI * 0.15, Math.PI * 0.85);
+  ctx.stroke();
+  // hair, or a cap for you and the staff
+  if (kind === 'cust') {
+    ctx.fillStyle = hair;
+    ctx.beginPath(); ctx.arc(x, hy - 1.5, 11, Math.PI * 1.02, Math.PI * 1.98); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(x - face * 3, hy - 7, 7, 3.5, -face * 0.3, 0, Math.PI * 2); ctx.fill();   // fringe
+    if (o.style === 2) { ctx.beginPath(); ctx.arc(x, hy - 13, 4.5, 0, Math.PI * 2); ctx.fill(); }          // bun
+    if (o.style === 3) for (const dx of [-7, -2.5, 2.5, 7]) { ctx.beginPath(); ctx.arc(x + dx, hy - 9.5, 3.4, 0, Math.PI * 2); ctx.fill(); }   // curls
+  } else {
+    const cap = kind === 'player' ? '#ff5a5f' : (o.cap || hair);
+    ctx.fillStyle = cap;
+    ctx.beginPath(); ctx.arc(x, hy - 2, 11, Math.PI, 0); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = OUTLINE; ctx.lineWidth = 1.2; ctx.stroke();
+    rr(x + face * 5 - 7, hy - 5, 14, 4, 2); ctx.fillStyle = shade(cap.startsWith('#') ? cap : '#ff5a5f', -0.15); ctx.fill();   // brim
+  }
+  // carried boxes
   for (let i = 0; i < stack.length; i++) {
-    const by = y - 58 + bob - i * 12;
+    const by = y - 60 + bob - i * 12;
     rr(x - 11, by - 6, 22, 13, 3); ctx.fillStyle = SEC[stack[i]].color; ctx.fill();
     ctx.strokeStyle = 'rgba(0,0,0,.25)'; ctx.lineWidth = 1.5; ctx.stroke();
   }
-  if (kind === 'player' && stack.length >= carryCap()) outlinedText('FULL', x, y - 66 - stack.length * 12, 11, '#fff');
+  if (kind === 'player' && stack.length >= carryCap()) outlinedText('FULL', x, y - 68 - stack.length * 12, 11, '#fff');
   if (o.carryPC) drawEmoji('🖥️', x + 14, y - 20, 16);
-  // shopping bag
-  if (kind === 'cust' && o.cart.length && o.state !== 'shop') drawEmoji('🛍️', x + 14, y - 14 + bob, 14);
+  if (kind === 'cust' && o.cart.length && o.state !== 'shop') drawEmoji('🛍️', x + 15, y - 14 + bob, 14);
   if (kind === 'player') outlinedText('YOU', x, y + 14, 10, '#fff', '#3a86ff');
 }
 
