@@ -129,8 +129,8 @@ button {
 #eventBanner.show { opacity: 1; transform: translate(-50%, 0); animation: bannerGlow 1.4s ease-in-out infinite; }
 .speed-row { display: flex; gap: 6px; margin-top: 8px; }
 .modal-card .speed-row .btn { flex: 1; min-height: 40px; min-width: 0; margin-top: 0; padding: 4px; }
-.gpu-icon { height: 0.9em; width: auto; vertical-align: -0.1em; }
-.avatar .gpu-icon { height: auto; width: 46px; vertical-align: middle; }
+.prod-icon { height: 1em; width: auto; vertical-align: -0.15em; }
+.avatar .prod-icon { width: auto; height: auto; max-width: 46px; max-height: 40px; vertical-align: middle; }
 #levelBanner {
   position: fixed; left: 50%; top: calc(var(--safe-top) + 110px); z-index: 60;
   transform: translate(-50%, -160px); opacity: 0; pointer-events: none;

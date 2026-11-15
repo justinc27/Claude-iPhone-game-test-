@@ -262,7 +262,7 @@ function celebrateLevel(id, milestone) {
 }
 function showLevelBanner(words) {
   const b = document.getElementById('levelBanner');
-  b.innerHTML = withGpuArt(escapeHtml(words));
+  b.innerHTML = withProductArt(escapeHtml(words));
   b.classList.remove('show'); void b.offsetWidth; b.classList.add('show');
 }
 
@@ -1115,13 +1115,17 @@ function resize() {
 window.addEventListener('resize', resize);
 
 const emojiCache = {};
-// Graphics cards are drawn as a real card (fans, bracket, gold pins). The 🎮 character
-// in SEC.gpu.icon and the GPU event is the marker that gets swapped for this picture.
+// Products are drawn as pictures of the real thing. Each product's emoji in SECTIONS is the
+// marker that gets swapped for its picture, on the canvas and in menus and pop-ups.
 const GPU_ICON = '🎮';
-const gpuArt = (() => {
-  const c = document.createElement('canvas'); c.width = 160; c.height = 80;
+function artCanvas(w, h, paint) {
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
   const g = c.getContext('2d');
-  const r = (x, y, w, h, rad) => { g.beginPath(); g.moveTo(x + rad, y); g.arcTo(x + w, y, x + w, y + h, rad); g.arcTo(x + w, y + h, x, y + h, rad); g.arcTo(x, y + h, x, y, rad); g.arcTo(x, y, x + w, y, rad); g.closePath(); };
+  const r = (x, y, ww, hh, rad) => { g.beginPath(); g.moveTo(x + rad, y); g.arcTo(x + ww, y, x + ww, y + hh, rad); g.arcTo(x + ww, y + hh, x, y + hh, rad); g.arcTo(x, y + hh, x, y, rad); g.arcTo(x, y, x + ww, y, rad); g.closePath(); };
+  paint(g, r);
+  return c;
+}
+const gpuArt = artCanvas(160, 80, (g, r) => {
   // metal bracket
   r(4, 8, 14, 62, 3); g.fillStyle = '#c8ccd6'; g.fill(); g.strokeStyle = '#7d8394'; g.lineWidth = 2; g.stroke();
   g.fillStyle = '#7d8394'; for (let i = 0; i < 3; i++) { r(8, 16 + i * 14, 6, 8, 2); g.fill(); }
@@ -1131,7 +1135,6 @@ const gpuArt = (() => {
   // cooler shroud with an orange accent
   r(16, 8, 138, 50, 10); g.fillStyle = '#2b2d3a'; g.fill(); g.strokeStyle = '#14151d'; g.lineWidth = 2.5; g.stroke();
   r(24, 12, 122, 5, 2.5); g.fillStyle = '#ff9f43'; g.fill();
-  // two fans
   for (const fx of [56, 114]) {
     g.beginPath(); g.arc(fx, 35, 18, 0, Math.PI * 2); g.fillStyle = '#14151d'; g.fill();
     g.fillStyle = '#6a7083';
@@ -1139,27 +1142,123 @@ const gpuArt = (() => {
     g.beginPath(); g.arc(fx, 35, 5, 0, Math.PI * 2); g.fillStyle = '#ff9f43'; g.fill();
     g.beginPath(); g.arc(fx, 35, 18, 0, Math.PI * 2); g.strokeStyle = '#454a5a'; g.lineWidth = 2; g.stroke();
   }
-  return c;
-})();
-const GPU_IMG = `<img class="gpu-icon" src="${gpuArt.toDataURL()}" alt="graphics card">`;
-function withGpuArt(html) { return html.split(GPU_ICON).join(GPU_IMG); }
+});
+// Gaming mouse, seen from above, with an RGB stripe
+const mouseArt = artCanvas(110, 160, (g) => {
+  g.beginPath(); g.moveTo(55, 6); g.bezierCurveTo(98, 6, 104, 60, 100, 100); g.bezierCurveTo(96, 142, 78, 156, 55, 156); g.bezierCurveTo(32, 156, 14, 142, 10, 100); g.bezierCurveTo(6, 60, 12, 6, 55, 6); g.closePath();
+  const body = g.createLinearGradient(0, 0, 110, 0); body.addColorStop(0, '#3a3d4d'); body.addColorStop(0.5, '#2b2d3a'); body.addColorStop(1, '#1d1f29');
+  g.fillStyle = body; g.fill(); g.strokeStyle = '#14151d'; g.lineWidth = 3; g.stroke();
+  g.strokeStyle = '#14151d'; g.lineWidth = 2.5; g.beginPath(); g.moveTo(55, 8); g.lineTo(55, 66); g.moveTo(14, 66); g.quadraticCurveTo(55, 76, 96, 66); g.stroke();   // buttons
+  g.fillStyle = '#5a6075'; g.beginPath(); g.ellipse(55, 34, 6, 13, 0, 0, Math.PI * 2); g.fill();                                                                         // scroll wheel
+  const rgb = g.createLinearGradient(20, 0, 90, 0); rgb.addColorStop(0, '#ff4fa3'); rgb.addColorStop(0.5, '#7fd4ff'); rgb.addColorStop(1, '#7ef0a8');
+  g.strokeStyle = rgb; g.lineWidth = 5; g.lineCap = 'round'; g.beginPath(); g.moveTo(28, 128); g.quadraticCurveTo(55, 142, 82, 128); g.stroke();                          // RGB stripe
+  g.fillStyle = 'rgba(255,255,255,.18)'; g.beginPath(); g.ellipse(36, 50, 9, 26, -0.15, 0, Math.PI * 2); g.fill();                                                        // shine
+});
+// PC tower with a glass side panel and RGB fans
+const caseArt = artCanvas(120, 160, (g, r) => {
+  r(6, 4, 108, 146, 8); g.fillStyle = '#23252f'; g.fill(); g.strokeStyle = '#0f1016'; g.lineWidth = 3; g.stroke();
+  r(16, 14, 88, 126, 5); g.fillStyle = '#141620'; g.fill();
+  const glass = g.createLinearGradient(16, 14, 104, 140); glass.addColorStop(0, 'rgba(140,190,255,.30)'); glass.addColorStop(1, 'rgba(90,60,200,.25)');
+  r(16, 14, 88, 126, 5); g.fillStyle = glass; g.fill();
+  const fan = (x, y, c) => { g.beginPath(); g.arc(x, y, 15, 0, Math.PI * 2); g.strokeStyle = c; g.lineWidth = 4; g.stroke(); g.beginPath(); g.arc(x, y, 9, 0, Math.PI * 2); g.fillStyle = '#2f3240'; g.fill(); g.beginPath(); g.arc(x, y, 3, 0, Math.PI * 2); g.fillStyle = c; g.fill(); };
+  fan(38, 38, '#ff4fa3'); fan(38, 78, '#7fd4ff'); fan(80, 112, '#c3a6ff');
+  r(58, 60, 40, 10, 2); g.fillStyle = '#3a3d4d'; g.fill(); r(58, 60, 40, 3, 1.5); g.fillStyle = '#ff9f43'; g.fill();     // graphics card inside
+  r(62, 22, 30, 26, 3); g.fillStyle = '#3a3d4d'; g.fill();                                                                 // CPU cooler
+  g.strokeStyle = 'rgba(255,255,255,.35)'; g.lineWidth = 3; g.beginPath(); g.moveTo(26, 132); g.lineTo(94, 24); g.stroke();   // glass glare
+  g.fillStyle = '#0f1016'; r(14, 150, 22, 8, 3); g.fill(); r(84, 150, 22, 8, 3); g.fill();                                  // feet
+});
+// Slim gaming monitor on a stand
+const monitorArt = artCanvas(200, 150, (g, r) => {
+  r(84, 100, 32, 30, 3); g.fillStyle = '#2b2d3a'; g.fill();                                          // neck
+  r(54, 126, 92, 14, 7); g.fillStyle = '#23252f'; g.fill(); g.strokeStyle = '#0f1016'; g.lineWidth = 2; g.stroke();   // base
+  r(6, 6, 188, 106, 8); g.fillStyle = '#1d1f29'; g.fill(); g.strokeStyle = '#0f1016'; g.lineWidth = 3; g.stroke();    // bezel
+  const scr = g.createLinearGradient(12, 12, 188, 104); scr.addColorStop(0, '#3a86ff'); scr.addColorStop(0.55, '#8338ec'); scr.addColorStop(1, '#ff4fa3');
+  r(13, 12, 174, 92, 4); g.fillStyle = scr; g.fill();
+  g.fillStyle = 'rgba(255,255,255,.85)'; r(26, 72, 50, 6, 3); g.fill(); r(26, 84, 32, 6, 3); g.fill();                  // a bit of on-screen UI
+  g.strokeStyle = 'rgba(255,255,255,.25)'; g.lineWidth = 6; g.beginPath(); g.moveTo(120, 14); g.lineTo(80, 102); g.stroke();   // glare
+  g.fillStyle = '#7ef0a8'; g.beginPath(); g.arc(178, 108, 2.5, 0, Math.PI * 2); g.fill();                                // power light
+});
+// CPU: silver heat spreader on a green board with gold contacts
+const cpuArt = artCanvas(150, 150, (g, r) => {
+  r(8, 8, 134, 134, 8); g.fillStyle = '#1f6f4a'; g.fill(); g.strokeStyle = '#124a30'; g.lineWidth = 3; g.stroke();
+  g.fillStyle = '#f2c14e';
+  for (let i = 0; i < 12; i++) { const p = 20 + i * 10; g.fillRect(p, 12, 4, 6); g.fillRect(p, 132, 4, 6); g.fillRect(12, p, 6, 4); g.fillRect(132, p, 6, 4); }
+  const ihs = g.createLinearGradient(30, 30, 120, 120); ihs.addColorStop(0, '#f3f5f9'); ihs.addColorStop(0.5, '#c9ced8'); ihs.addColorStop(1, '#9aa1b0');
+  r(30, 30, 90, 90, 6); g.fillStyle = ihs; g.fill(); g.strokeStyle = '#7d8394'; g.lineWidth = 2.5; g.stroke();
+  g.fillStyle = 'rgba(80,88,104,.55)'; r(44, 58, 62, 6, 3); g.fill(); r(44, 72, 46, 6, 3); g.fill(); r(44, 86, 54, 5, 2.5); g.fill();   // etched markings
+  g.fillStyle = '#f2c14e'; g.beginPath(); g.moveTo(14, 14); g.lineTo(30, 14); g.lineTo(14, 30); g.closePath(); g.fill();                  // corner marker
+});
+// 2.5-inch SSD with a coloured label
+const ssdArt = artCanvas(200, 130, (g, r) => {
+  r(6, 6, 188, 118, 10); g.fillStyle = '#2b2d3a'; g.fill(); g.strokeStyle = '#0f1016'; g.lineWidth = 3; g.stroke();
+  const lab = g.createLinearGradient(20, 20, 180, 110); lab.addColorStop(0, '#e05fb0'); lab.addColorStop(1, '#8338ec');
+  r(20, 20, 160, 90, 6); g.fillStyle = lab; g.fill();
+  g.font = '700 38px Fredoka, ui-rounded, system-ui, sans-serif'; g.textAlign = 'left'; g.textBaseline = 'middle'; g.fillStyle = '#fff'; g.fillText('SSD', 34, 54);
+  g.fillStyle = 'rgba(255,255,255,.8)'; r(34, 80, 70, 7, 3.5); g.fill(); r(34, 92, 44, 6, 3); g.fill();
+  g.fillStyle = '#c8ccd6'; r(150, 42, 22, 46, 3); g.fill();                                            // connector
+  g.fillStyle = '#7d8394'; for (let i = 0; i < 5; i++) g.fillRect(155, 47 + i * 8, 12, 3);
+  g.fillStyle = '#c8ccd6'; for (const [x, y] of [[14, 14], [186, 14], [14, 116], [186, 116]]) { g.beginPath(); g.arc(x, y, 3, 0, Math.PI * 2); g.fill(); }   // screws
+});
+// Gaming chair: tall bucket seat with side bolsters, headrest pillow and a 5-star base
+const chairArt = artCanvas(130, 175, (g, r) => {
+  const dark = '#1d1f29', accent = '#e5484d';
+  // base and wheels
+  g.strokeStyle = '#3a3d4d'; g.lineWidth = 6; g.lineCap = 'round'; g.beginPath();
+  for (const [x, y] of [[20, 160], [42, 168], [88, 168], [110, 160]]) { g.moveTo(65, 150); g.lineTo(x, y); }
+  g.stroke();
+  g.fillStyle = '#14151d'; for (const [x, y] of [[20, 162], [42, 170], [88, 170], [110, 162]]) { g.beginPath(); g.arc(x, y, 5, 0, Math.PI * 2); g.fill(); }
+  r(60, 120, 10, 32, 3); g.fillStyle = '#7d8394'; g.fill();                                            // gas lift
+  // armrests
+  r(8, 92, 18, 10, 4); g.fillStyle = '#2b2d3a'; g.fill(); r(14, 100, 6, 22, 2); g.fill();
+  r(104, 92, 18, 10, 4); g.fill(); r(110, 100, 6, 22, 2); g.fill();
+  // backrest with bolsters
+  g.beginPath(); g.moveTo(30, 18); g.quadraticCurveTo(65, 2, 100, 18); g.lineTo(104, 96); g.lineTo(26, 96); g.closePath();
+  g.fillStyle = dark; g.fill(); g.strokeStyle = '#0f1016'; g.lineWidth = 3; g.stroke();
+  g.fillStyle = accent; g.beginPath(); g.moveTo(30, 18); g.lineTo(42, 14); g.lineTo(40, 96); g.lineTo(26, 96); g.closePath(); g.fill();
+  g.beginPath(); g.moveTo(100, 18); g.lineTo(88, 14); g.lineTo(90, 96); g.lineTo(104, 96); g.closePath(); g.fill();
+  r(46, 22, 38, 14, 6); g.fillStyle = accent; g.fill();                                                  // headrest pillow
+  r(52, 46, 26, 34, 5); g.fillStyle = '#2b2d3a'; g.fill();                                               // lumbar stitching panel
+  // seat
+  r(22, 94, 86, 28, 10); g.fillStyle = '#2b2d3a'; g.fill(); g.strokeStyle = '#0f1016'; g.lineWidth = 3; g.stroke();
+  r(30, 98, 70, 8, 4); g.fillStyle = accent; g.fill();
+});
+// marker → { art, width as a multiple of the drawn size }
+const PRODUCT_ART = {
+  '🎮': { art: gpuArt, wm: 1.55, name: 'graphics card' },
+  '🖱️': { art: mouseArt, wm: 0.8, name: 'gaming mouse' },
+  '🗄️': { art: caseArt, wm: 0.95, name: 'PC case' },
+  '🖥️': { art: monitorArt, wm: 1.35, name: 'monitor' },
+  '🧠': { art: cpuArt, wm: 1.05, name: 'CPU' },
+  '💾': { art: ssdArt, wm: 1.35, name: 'SSD' },
+  '🪑': { art: chairArt, wm: 0.95, name: 'gaming chair' },
+};
+const ART_PAD = 14;
+for (const k in PRODUCT_ART) {
+  const a = PRODUCT_ART[k];
+  // the same picture with a soft drop shadow baked in (used on shelves)
+  a.shadow = (() => {
+    const c = document.createElement('canvas');
+    c.width = a.art.width + ART_PAD * 2; c.height = a.art.height + ART_PAD * 2;
+    const g = c.getContext('2d');
+    g.shadowColor = 'rgba(20,10,50,.6)'; g.shadowBlur = 7; g.shadowOffsetX = 6; g.shadowOffsetY = 11;
+    g.drawImage(a.art, ART_PAD, ART_PAD);
+    return c;
+  })();
+  a.img = `<img class="prod-icon" src="${a.art.toDataURL()}" alt="${a.name}">`;
+}
+function withProductArt(html) {
+  for (const k in PRODUCT_ART) html = html.split(k).join(PRODUCT_ART[k].img);
+  return html;
+}
 function escapeHtml(t) { return t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
-// The graphics card with a soft drop shadow baked in (drawn once)
-const gpuArtShadow = (() => {
-  const pad = 14, c = document.createElement('canvas');
-  c.width = gpuArt.width + pad * 2; c.height = gpuArt.height + pad * 2;
-  const g = c.getContext('2d');
-  g.shadowColor = 'rgba(20,10,50,.6)'; g.shadowBlur = 7; g.shadowOffsetX = 6; g.shadowOffsetY = 11;
-  g.drawImage(gpuArt, pad, pad);
-  return c;
-})();
 // shadow = true adds a soft drop shadow (used for products on shelves)
 function drawEmoji(ch, x, y, size, shadow = false) {
-  if (ch === GPU_ICON) {
-    const w = size * 1.55, h = w / 2;
-    if (!shadow) { ctx.drawImage(gpuArt, x - w / 2, y - h / 2, w, h); return; }
-    const k = w / gpuArt.width;
-    ctx.drawImage(gpuArtShadow, x - w / 2 - 14 * k, y - h / 2 - 14 * k, gpuArtShadow.width * k, gpuArtShadow.height * k);
+  const pa = PRODUCT_ART[ch];
+  if (pa) {
+    const w = size * pa.wm, h = w * pa.art.height / pa.art.width;
+    if (!shadow) { ctx.drawImage(pa.art, x - w / 2, y - h / 2, w, h); return; }
+    const k = w / pa.art.width;
+    ctx.drawImage(pa.shadow, x - w / 2 - ART_PAD * k, y - h / 2 - ART_PAD * k, pa.shadow.width * k, pa.shadow.height * k);
     return;
   }
   const px = Math.max(4, Math.round(size * zoom * DPR));
@@ -2052,7 +2151,7 @@ function updateHud(dt) {
   $('#missionsBtn').classList.toggle('alert', anyClaimable());
   const eb = $('#eventBanner');
   eb.classList.toggle('show', !!rushEvent);
-  if (rushEvent) eb.innerHTML = withGpuArt(`<b>${rushEvent.icon} ${rushEvent.name}</b> ${rushEvent.desc} · ${Math.ceil(eventLeft)}s`);
+  if (rushEvent) eb.innerHTML = withProductArt(`<b>${rushEvent.icon} ${rushEvent.name}</b> ${rushEvent.desc} · ${Math.ceil(eventLeft)}s`);
   if (!$('#modal').classList.contains('hidden')) {
     document.querySelectorAll('#modalCard [data-cost]').forEach(b => b.classList.toggle('disabled', state.money < +b.dataset.cost));
   }
@@ -2159,7 +2258,7 @@ function confetti() {
 function toast(msg) {
   const el = document.createElement('div');
   el.className = 'toast';
-  el.innerHTML = withGpuArt(escapeHtml(msg));
+  el.innerHTML = withProductArt(escapeHtml(msg));
   const box = $('#toasts');
   while (box.children.length >= 3) box.firstChild.remove();
   box.appendChild(el);
@@ -2171,7 +2270,7 @@ function showModal(html, sheet = false) {
   const card = $('#modalCard');
   const refreshing = sheet && !$('#modal').classList.contains('hidden') && card.classList.contains('sheet');
   const scroll = refreshing ? card.scrollTop : 0;
-  card.innerHTML = withGpuArt(html);
+  card.innerHTML = withProductArt(html);
   card.scrollTop = scroll;
   $('#modalCard').classList.toggle('sheet', sheet);
   $('#modal').classList.toggle('as-sheet', sheet);
