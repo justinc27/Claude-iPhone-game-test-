@@ -122,6 +122,7 @@ function freshState(keep = {}) {
     achDone: keep.achDone || [], achClaimed: keep.achClaimed || [], daily: keep.daily || null,
     storeName: keep.storeName || 'Byte Depot',
     sound: keep.sound !== undefined ? keep.sound : true,
+    haptics: keep.haptics !== undefined ? keep.haptics : true,
     sec, speedLv: 0, carryLv: 0,
     expanded: false, expandPaid: 0,
     crates: Object.fromEntries(SECTIONS.filter(x => x.shelf).map(x => [x.id, 24])),
@@ -316,6 +317,33 @@ const sfx = {
   unlock: () => [523, 659, 784, 1047].forEach((f, i) => setTimeout(() => beep(f, 0.12, 'triangle', 0.05), i * 90)),
   sad: () => beep(180, 0.2, 'sawtooth', 0.03),
 };
+
+// ---------- Haptics ----------
+// In the iPhone app (Capacitor) this uses the Taptic Engine; in browsers that allow it, the vibration
+// motor. iPhone browsers don't allow vibration, so there's nothing to feel in Safari or the preview.
+const HAPTIC_RANK = { selection: 0, light: 1, medium: 2, heavy: 3, success: 4 };
+let lastBuzzAt = 0, lastBuzzRank = -1;
+function buzz(kind) {
+  if (!state.haptics) return;
+  const now = performance.now(), rank = HAPTIC_RANK[kind];
+  if (now - lastBuzzAt < 70 && rank <= lastBuzzRank) return;   // don't stack buzzes; a stronger one may override
+  lastBuzzAt = now; lastBuzzRank = rank;
+  try {
+    const H = window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.Haptics;
+    if (H) {
+      if (kind === 'selection') H.selectionChanged();
+      else if (kind === 'success') H.notification({ type: 'SUCCESS' });
+      else H.impact({ style: kind.toUpperCase() });
+    } else if (navigator.vibrate) {
+      navigator.vibrate({ selection: 5, light: 10, medium: 20, heavy: 35, success: [15, 40, 25] }[kind]);
+    }
+  } catch (e) { /* haptics unavailable */ }
+}
+// Each sound effect also gives a matching tap
+for (const [name, kind] of Object.entries({ pick: 'light', drop: 'light', pop: 'light', ching: 'medium', big: 'heavy', fanfare: 'success', unlock: 'success', tick: 'selection' })) {
+  const play = sfx[name];
+  sfx[name] = (...a) => { const r = play(...a); buzz(kind); return r; };
+}
 
 // ---------- Geometry ----------
 const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
@@ -703,7 +731,7 @@ function doFranchise() {
   const gain = claimableStars();
   if (gain <= 0) return;
   const keep = {
-    storeName: state.storeName, sound: state.sound, lifetime: state.lifetime, served: state.served, built: state.built,
+    storeName: state.storeName, sound: state.sound, haptics: state.haptics, lifetime: state.lifetime, served: state.served, built: state.built,
     restocked: state.restocked, sold: state.sold, stars: state.stars + gain, starsClaimed: state.starsClaimed + gain,
     franchises: state.franchises + 1, achDone: state.achDone, achClaimed: state.achClaimed, daily: state.daily,
     admin: { ...state.admin, savedMoney: 0 },
@@ -2285,6 +2313,7 @@ function showSettings() {
     <input id="nameInput" maxlength="24" value="${state.storeName.replace(/"/g, '&quot;')}">
     <button class="btn green" data-act="saveName">Save name</button>
     <button class="btn" data-act="toggleSound">Sound: ${state.sound ? 'ON 🔊' : 'OFF 🔇'}</button>
+    <button class="btn" data-act="toggleHaptics">Vibration: ${state.haptics ? 'ON 📳' : 'OFF 📴'}</button>
     <button class="btn" data-act="admin">🛠️ Admin tools (testing)</button>
     <button class="btn danger" data-act="askReset">Reset all progress</button>
     <button class="btn disabled" data-act="close">Close</button>`);
@@ -2348,6 +2377,7 @@ function handleAction(el, act, id) {
       break;
     }
     case 'toggleSound': state.sound = !state.sound; showSettings(); break;
+    case 'toggleHaptics': state.haptics = !state.haptics; if (state.haptics) buzz('medium'); showSettings(); break;
     case 'admin': showAdmin(); break;
     case 'adminMoney': adminSetUnlimited(!state.admin.unlimited); showAdmin(); break;
     case 'adminSpeed': state.admin.speed = +id; toast(`⏩ Game speed ${id}x`); showAdmin(); break;
