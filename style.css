@@ -224,6 +224,8 @@ button {
   animation: pop .25s ease-out;
 }
 .modal-card h2 { margin: 0 0 6px; font-size: 24px; }
+.modal-card { position: relative; }
+.modal-card .modal-x { position: absolute; top: 12px; right: 12px; margin: 0; z-index: 1; }
 .modal-card p { margin: 6px 0 14px; color: var(--ink-soft); font-weight: 600; }
 .modal-card .emoji { font-size: 56px; }
 .modal-card .btn { width: 100%; margin-top: 10px; }

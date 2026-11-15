@@ -2090,6 +2090,8 @@ function toast(msg) {
   setTimeout(() => el.remove(), 2700);
 }
 function showModal(html, sheet = false) {
+  // pop-ups get a close button in the corner (full menus have one in their header)
+  if (!sheet) html = '<button class="icon-btn small modal-x" data-act="close" aria-label="Close">✕</button>' + html;
   const card = $('#modalCard');
   const refreshing = sheet && !$('#modal').classList.contains('hidden') && card.classList.contains('sheet');
   const scroll = refreshing ? card.scrollTop : 0;
