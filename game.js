@@ -324,12 +324,23 @@ function crateRect(s) { return { x: s.crate.x - CRATE_W / 2, y: s.crate.y - CRAT
 function padRect(p, w = 96, h = 56) { return { x: p.x - w / 2, y: p.y - h / 2, w, h }; }
 
 function obstacles() {
-  const list = [...COUNTERS, ...(state.expanded ? DIVIDER_OPEN : [])];
+  const list = [...COUNTERS, ...DECOR_RECTS, ...(state.expanded ? DIVIDER_OPEN : [])];
   for (const s of PARTS) if (state.sec[s.id].unlocked) list.push(s.shelf);
   if (state.sec.svc.unlocked) list.push(SEC.svc.bench);
   return list;
 }
 let FURNITURE = [];
+// Decorations people walk around
+const DECOR = {
+  kiosk: { x: 130, y: 880 },            // demo gaming PC near the entrance
+  standee: { x: 170, y: 548 },          // "NEW GPUs!" stand by the Graphics Cards
+  plants: [{ x: 88, y: 660 }, { x: 196, y: 988 }, { x: 412, y: 988 }, { x: 578, y: 988 }],
+};
+const DECOR_RECTS = [
+  { x: DECOR.kiosk.x - 36, y: DECOR.kiosk.y - 28, w: 72, h: 50 },
+  { x: DECOR.standee.x - 20, y: DECOR.standee.y - 18, w: 40, h: 22 },
+  ...DECOR.plants.map(p => ({ x: p.x - 12, y: p.y - 16, w: 24, h: 20 })),
+];
 // For shoppers & staff: is a straight walk blocked by furniture?
 function segmentBlocked(a, b) {
   const steps = Math.ceil(dist(a, b) / 8);
@@ -343,7 +354,7 @@ function segmentBlocked(a, b) {
 const CELL = 20, GW = Math.ceil(W_FULL / CELL), GH = Math.ceil(H / CELL);
 const blockedCell = new Uint8Array(GW * GH);
 function rebuildGrid() {
-  FURNITURE = [...COUNTERS, SEC.svc.bench, ...PARTS.map(s => s.shelf), ...(state.expanded ? DIVIDER_OPEN : DIVIDER_CLOSED)];
+  FURNITURE = [...COUNTERS, ...DECOR_RECTS, SEC.svc.bench, ...PARTS.map(s => s.shelf), ...(state.expanded ? DIVIDER_OPEN : DIVIDER_CLOSED)];
   const ww = worldW();
   for (let gy = 0; gy < GH; gy++) for (let gx = 0; gx < GW; gx++) {
     const p = { x: gx * CELL + CELL / 2, y: gy * CELL + CELL / 2 };
@@ -1165,6 +1176,7 @@ function render() {
   drawUnlockPads();
   drawExpansionPad();
   drawHirePads();
+  drawDecor();
 
   // Characters, sorted by depth
   const people = [...customers.map(c => ({ o: c, kind: 'cust' })), { o: state.player, kind: 'player' }];
@@ -1201,6 +1213,13 @@ function buildFloor() {
   // walls with a light top edge
   rr(0, 0, W_FULL, H, 18); ctx.fillStyle = T.wall; ctx.fill();
   rr(4, 4, W_FULL - 8, H - 8, 15); ctx.strokeStyle = 'rgba(255,255,255,.14)'; ctx.lineWidth = 3; ctx.stroke();
+  // brick texture on the outer walls
+  ctx.strokeStyle = 'rgba(255,255,255,.10)'; ctx.lineWidth = 1; ctx.beginPath();
+  for (let y = 20, row = 0; y < H - 8; y += 8, row++) {
+    ctx.moveTo(2, y); ctx.lineTo(15, y); ctx.moveTo(W_FULL - 15, y); ctx.lineTo(W_FULL - 2, y);
+    const bx = row % 2 ? 6 : 11; ctx.moveTo(bx, y); ctx.lineTo(bx, y + 8); ctx.moveTo(W_FULL - bx, y); ctx.lineTo(W_FULL - bx, y + 8);
+  }
+  ctx.stroke();
   ctx.save();
   rr(16, 16, W_FULL - 32, H - 32, 10); ctx.clip();
   // tiles, grout and a little speckle
@@ -1232,6 +1251,12 @@ function buildFloor() {
   edge(0, H - 16, 0, H - 48, W_FULL, 32);
   edge(16, 0, 48, 0, 32, H);
   edge(W_FULL - 16, 0, W_FULL - 48, 0, 32, H);
+  // wooden plank floor in the checkout area
+  drawPlanks(236, 736, 350, 268);
+  // store-logo rug in the open floor
+  rr(208, 581, 184, 68, 34); ctx.fillStyle = '#4a2f9e'; ctx.fill();
+  rr(214, 587, 172, 56, 28); ctx.strokeStyle = '#ffc83d'; ctx.lineWidth = 2.5; ctx.setLineDash([6, 4]); ctx.stroke(); ctx.setLineDash([]);
+  text(state.storeName.toUpperCase().slice(0, 14), 310, 616, 15, '#fff');
   // shadows under the furniture that's in the store
   for (const r of COUNTERS) softShadow(r, 9);
   for (const s of PARTS) if (state.sec[s.id].unlocked) softShadow(s.shelf);
@@ -1245,13 +1270,14 @@ function buildFloor() {
   ctx.fillRect(EXIT.x, H - 18, EXIT.w, 18);
   text('ENTRANCE', ENTRANCE.x + ENTRANCE.w / 2, H - 9, 11, '#1d4e74');
   text('EXIT', EXIT.x + EXIT.w / 2, H - 9, 11, '#1d4e74');
-  rr(ENTRANCE.x + 15, H - 66, ENTRANCE.w - 30, 42, 8); ctx.fillStyle = 'rgba(120,100,200,.22)'; ctx.fill();
-  ctx.strokeStyle = 'rgba(120,100,200,.35)'; ctx.lineWidth = 2; ctx.stroke();
+  rr(ENTRANCE.x + 15, H - 66, ENTRANCE.w - 30, 42, 8); ctx.fillStyle = '#5b2bd1'; ctx.fill();
+  ctx.strokeStyle = '#3b1f8f'; ctx.lineWidth = 2; ctx.stroke();
+  text('WELCOME', ENTRANCE.x + ENTRANCE.w / 2, H - 45, 12, '#ffe17a');
   ctx = main;
   floorCache = c;
 }
 function drawFloor() {
-  const key = [state.franchises % THEMES.length, state.expanded, ...SECTIONS.map(s => state.sec[s.id].unlocked ? 1 : 0), Math.round(zoom * DPR * 100)].join(',');
+  const key = [state.storeName, state.franchises % THEMES.length, state.expanded, ...SECTIONS.map(s => state.sec[s.id].unlocked ? 1 : 0), Math.round(zoom * DPR * 100)].join(',');
   if (key !== floorKey || !floorCache) { buildFloor(); floorKey = key; }
   ctx.drawImage(floorCache, 0, 0, W_FULL, H);
 }
@@ -1322,6 +1348,11 @@ function drawStockroom() {
   // loading dock door in the top wall
   ctx.fillStyle = truck.phase === 'unloading' ? '#7ef0a8' : '#8fd3ff'; ctx.fillRect(DOCK_X - 45, 0, 90, 16);
   text('DOCK', DOCK_X, 8, 10, '#1d4e74');
+  ctx.fillStyle = 'rgba(120,100,60,.12)';
+  for (const [sx, sy, rad] of [[150, 40, 18], [330, 130, 24], [470, 50, 14], [260, 70, 10], [760, 120, 20], [900, 45, 14]]) { ctx.beginPath(); ctx.ellipse(sx, sy, rad, rad * 0.6, 0.4, 0, Math.PI * 2); ctx.fill(); }
+  ctx.save(); rr(16, 150, W_FULL - 32, 10, 3); ctx.clip();
+  for (let x = 0; x < W_FULL; x += 20) { ctx.fillStyle = (x / 20) % 2 ? '#2b2350' : '#ffc83d'; ctx.beginPath(); ctx.moveTo(x, 160); ctx.lineTo(x + 10, 150); ctx.lineTo(x + 20, 150); ctx.lineTo(x + 10, 160); ctx.fill(); }
+  ctx.restore();
   text('STOCKROOM  ·  ' + truckStatus(), 300, 30, 12, '#7a6a35');
   for (const s of PARTS) {
     const r = crateRect(s);
@@ -1542,6 +1573,67 @@ function drawUnlockPads() {
   }
 }
 
+function drawPlanks(x0, y0, w, h) {
+  ctx.save(); rr(x0, y0, w, h, 12); ctx.clip();
+  for (let y = y0, row = 0; y < y0 + h; y += 18, row++) {
+    ctx.fillStyle = row % 2 ? '#d6b48a' : '#ddbd94'; ctx.fillRect(x0, y, w, 18);
+    ctx.fillStyle = 'rgba(110,70,30,.25)'; ctx.fillRect(x0, y + 17, w, 1.2);
+    for (let x = x0 + (row % 3) * 37; x < x0 + w; x += 110) ctx.fillRect(x, y, 1.2, 18);
+    ctx.strokeStyle = 'rgba(140,90,40,.12)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(x0, y + 7); ctx.bezierCurveTo(x0 + w * .3, y + 4, x0 + w * .6, y + 11, x0 + w, y + 7); ctx.stroke();
+  }
+  ctx.restore();
+  rr(x0, y0, w, h, 12); ctx.strokeStyle = 'rgba(110,70,30,.35)'; ctx.lineWidth = 2; ctx.stroke();
+}
+function drawPlant(x, y) {
+  ctx.beginPath(); ctx.ellipse(x, y + 4, 16, 6, 0, 0, Math.PI * 2); ctx.fillStyle = 'rgba(20,10,50,.25)'; ctx.fill();
+  rr(x - 11, y - 14, 22, 18, 5); ctx.fillStyle = '#c96f4a'; ctx.fill(); rr(x - 13, y - 16, 26, 6, 3); ctx.fillStyle = '#e08a63'; ctx.fill();
+  const sway = Math.sin(time * 1.5 + x) * 0.04;
+  for (const [a, l, c] of [[-0.9, 26, '#2f9e5b'], [0.9, 26, '#2f9e5b'], [-0.45, 32, '#3cb371'], [0.45, 32, '#3cb371'], [0, 36, '#4cc77f']]) {
+    ctx.save(); ctx.translate(x, y - 16); ctx.rotate(a + sway); ctx.beginPath(); ctx.ellipse(0, -l / 2, 6, l / 2, 0, 0, Math.PI * 2); ctx.fillStyle = c; ctx.fill(); ctx.restore();
+  }
+}
+function drawKiosk(x, y) {
+  rr(x - 40, y - 4, 80, 34, 6); ctx.fillStyle = 'rgba(20,10,50,.18)'; ctx.fill();
+  rr(x - 38, y - 10, 76, 30, 6); ctx.fillStyle = '#3b3550'; ctx.fill(); rr(x - 38, y - 10, 76, 6, 3); ctx.fillStyle = '#5a5276'; ctx.fill();
+  const hue = (time * 60) % 360;
+  rr(x - 26, y - 40, 34, 24, 3); ctx.fillStyle = '#1d1a2b'; ctx.fill();
+  const g = ctx.createLinearGradient(x - 24, y - 38, x + 6, y - 18);
+  g.addColorStop(0, `hsl(${hue},90%,60%)`); g.addColorStop(1, `hsl(${(hue + 120) % 360},90%,55%)`);
+  rr(x - 24, y - 38, 30, 20, 2); ctx.fillStyle = g; ctx.fill();
+  ctx.fillStyle = '#1d1a2b'; ctx.fillRect(x - 11, y - 16, 4, 6);
+  rr(x + 12, y - 40, 20, 32, 3); ctx.fillStyle = '#1d1a2b'; ctx.fill();
+  ctx.save(); ctx.shadowColor = `hsl(${(hue + 200) % 360},100%,60%)`; ctx.shadowBlur = 10;
+  ctx.beginPath(); ctx.arc(x + 22, y - 26, 6, 0, Math.PI * 2); ctx.strokeStyle = `hsl(${(hue + 200) % 360},100%,62%)`; ctx.lineWidth = 2.5; ctx.stroke(); ctx.restore();
+  rr(x - 22, y + 24, 44, 14, 7); ctx.fillStyle = '#ff6b9a'; ctx.fill(); text('TRY ME', x, y + 31, 9, '#fff');
+}
+function drawStandee(x, y) {
+  ctx.beginPath(); ctx.ellipse(x, y + 3, 22, 5, 0, 0, Math.PI * 2); ctx.fillStyle = 'rgba(20,10,50,.22)'; ctx.fill();
+  ctx.strokeStyle = '#8a6a2f'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(x - 12, y); ctx.lineTo(x - 6, y - 16); ctx.moveTo(x + 12, y); ctx.lineTo(x + 6, y - 16); ctx.stroke();
+  rr(x - 30, y - 50, 60, 36, 6); ctx.fillStyle = '#fff'; ctx.fill(); ctx.strokeStyle = '#ff7a1a'; ctx.lineWidth = 3; ctx.stroke();
+  drawEmoji(GPU_ICON, x, y - 39, 16); text('NEW GPUs!', x, y - 23, 9.5, '#ff7a1a');
+}
+function drawDecor() {
+  // RGB light strips along the inside of the walls
+  const hue = (time * 40) % 360, right = worldW() - 18;
+  ctx.save(); ctx.lineCap = 'round';
+  // glow = a wide faint line under a bright thin one (cheaper than a blur)
+  const strip = (x1, y1, x2, y2, off) => {
+    const c = `hsl(${(hue + off) % 360},100%,62%)`;
+    ctx.strokeStyle = c; ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2);
+    ctx.globalAlpha = 0.25; ctx.lineWidth = 12; ctx.stroke();
+    ctx.globalAlpha = 1; ctx.lineWidth = 4; ctx.stroke();
+  };
+  strip(19, 172, 19, 1000, 0); strip(right + 1, 172, right + 1, 1000, 120); strip(180, 1001, 420, 1001, 240);
+  ctx.restore();
+  // neon OPEN sign by the doors
+  ctx.save(); ctx.shadowColor = '#ff4fa3'; ctx.shadowBlur = 14 + 4 * Math.sin(time * 3);
+  ctx.font = '700 18px Fredoka, ui-rounded, system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.strokeStyle = '#ff4fa3'; ctx.lineWidth = 2; ctx.strokeText('OPEN', 300, 985); ctx.fillStyle = '#fff'; ctx.fillText('OPEN', 300, 985); ctx.restore();
+  for (const p of DECOR.plants) drawPlant(p.x, p.y);
+  drawKiosk(DECOR.kiosk.x, DECOR.kiosk.y);
+  drawStandee(DECOR.standee.x, DECOR.standee.y);
+}
 function drawHirePads() {
   for (const k in HIRE_PADS) {
     if (state.staff[k] || !staffAvailable(k)) continue;
