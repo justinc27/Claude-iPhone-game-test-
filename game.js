@@ -748,7 +748,6 @@ function showStarShop() {
       <div class="desc">${lv ? 'Now: ' + p.desc(lv) : 'Not bought yet'}${done ? '' : `<br><b>Next: ${p.desc(lv + 1)}</b>`}</div></div>
       ${done ? '<button class="btn owned" disabled>MAX</button>' : `<button class="btn ${state.stars >= perkCost(p.id) ? 'green' : 'disabled'}" data-act="starPerk" data-id="${p.id}">Buy<small>${perkCost(p.id)} ⭐</small></button>`}</div>`;
   }
-  html += `<button class="btn" data-act="backToUpgrades" style="width:100%;margin-top:6px">⬅️ Back to Upgrades</button>`;
   showModal(html, true);
 }
 function buyPerk(id) {
@@ -768,10 +767,7 @@ function franchiseHtml() {
     <div class="item franchise"><div class="avatar" style="--c:#fff1b8">⭐</div>
       <div class="info"><div class="title">${state.stars} Stars <small>profit x${starMult().toFixed(2)}</small></div>
       <div class="desc">Now: ${theme().name}. Sell it and open a ${next.name} for <b>+${gain} ⭐</b>. Next Star at ${money$(nextStarAt())} lifetime earnings. Resets cash, sections, staff and upgrades.</div></div>
-      <button class="btn ${gain > 0 ? 'green' : 'disabled'}" data-act="franchise">Franchise<small>+${gain} ⭐</small></button></div>
-    <div class="item"><div class="avatar" style="--c:#fff1b8">🛒</div>
-      <div class="info"><div class="title">Star Shop</div><div class="desc">Spend Stars on permanent perks that stay through every Franchise</div></div>
-      <button class="btn green" data-act="starShop">Open<small>${state.stars} ⭐</small></button></div>`;
+      <button class="btn ${gain > 0 ? 'green' : 'disabled'}" data-act="franchise">Franchise<small>+${gain} ⭐</small></button></div>`;
 }
 function doFranchise() {
   const gain = claimableStars();
@@ -2227,6 +2223,8 @@ function updateHud(dt) {
   $('#upgradeBtn').classList.toggle('alert', anyAffordable() || claimableStars() > 0);
   updateMissions();
   $('#missionsBtn').classList.toggle('alert', anyClaimable());
+  $('#starCount').textContent = state.stars;
+  $('#starBtn').classList.toggle('alert', anyPerkAffordable());
   const eb = $('#eventBanner');
   eb.classList.toggle('show', !!rushEvent);
   if (rushEvent) eb.innerHTML = withProductArt(`<b>${rushEvent.icon} ${rushEvent.name}</b> ${rushEvent.desc} · ${Math.ceil(eventLeft)}s`);
@@ -2252,7 +2250,6 @@ function anyAffordable() {
   if (state.deliveryLv < MAX_STOCKROOM_LV && state.money >= deliveryCost()) return true;
   if (state.truckLv < MAX_STOCKROOM_LV && state.money >= truckCost()) return true;
   for (const u of STAFF_UPGRADES) if (state.staff[u.staff] && staffLv(u.id) < u.max && state.money >= staffUpCost(u.id)) return true;
-  if (anyPerkAffordable()) return true;
   return false;
 }
 function staffRemaining(k) { return STAFF[k].cost - (state.staffPaid[k] || 0); }
@@ -2397,7 +2394,6 @@ function handleAction(el, act, id) {
     }
     case 'starShop': showStarShop(); $('#modalCard').scrollTop = 0; break;
     case 'starPerk': buyPerk(id); break;
-    case 'backToUpgrades': showUpgrades(); $('#modalCard').scrollTop = 0; break;
     case 'franchise':
       if (claimableStars() > 0) showModal(`<div class="emoji">⭐</div><h2>Open a new store?</h2>
         <p>Sell your ${theme().name} for <b>${claimableStars()} Stars</b> and open a ${THEMES[(state.franchises + 1) % THEMES.length].name}. Every Star adds 5% to all your prices, forever.</p>
@@ -2489,6 +2485,7 @@ $('#modalCard').addEventListener('scroll', stopHold, { passive: true });
 $('#upgradeBtn').addEventListener('click', showUpgrades);
 $('#settingsBtn').addEventListener('click', showSettings);
 $('#missionsBtn').addEventListener('click', () => { updateMissions(); showMissions(); });
+$('#starBtn').addEventListener('click', () => { showStarShop(); $('#modalCard').scrollTop = 0; });
 $('#modal').addEventListener('click', e => { if (e.target.id === 'modal') closeModal(); });
 
 // ---------- Admin tools (for testing) ----------
