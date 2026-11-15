@@ -854,7 +854,15 @@ function updatePlayer(dt) {
   // Stockroom crates: pick up boxes
   pickTimer += dt; dropTimer += dt;
   for (const s of unlockedParts()) {
-    if (inRect(p, crateRect(s)) && state.carry.length < carryCap() && pickTimer > 0.13 && state.crates[s.id] > 0) {
+    if (!inRect(p, crateRect(s)) || pickTimer <= 0.13) continue;
+    if (!boxUsable(s.id)) {
+      // shelf is full and no job needs one: boxes of this type go back into the crate
+      const i = state.carry.lastIndexOf(s.id);
+      if (i >= 0 && state.crates[s.id] < crateMax()) {
+        state.carry.splice(i, 1); state.crates[s.id]++; pickTimer = 0; sfx.drop();
+        fx.push({ type: 'box', x: p.x, y: p.y - 60, tx: s.crate.x, ty: s.crate.y, t: 0, life: 0.22, color: s.color, carried: true });
+      }
+    } else if (state.carry.length < carryCap() && state.crates[s.id] > 0) {
       state.carry.push(s.id); state.crates[s.id]--; pickTimer = 0; sfx.pick();
     }
   }
@@ -901,6 +909,12 @@ function collectPile(spot, amount, clear) {
   clear();
   bank(amount, spot.x, spot.y - 30);
   for (let i = 0; i < 6; i++) fx.push({ type: 'coin', x: spot.x + Math.random() * 20 - 10, y: spot.y, tx: state.player.x, ty: state.player.y - 30, t: -i * 0.05 });
+}
+// Is there anywhere to put a box of this type right now: shelf space, or a Service Station job that needs it?
+function boxUsable(id) {
+  if (state.sec[id].stock < shelfCap(id)) return true;
+  const c = currentJobCustomer();
+  return !!(c && c.job && missingParts(c.job).includes(id));
 }
 function hireStaff(k) {
   if (state.staff[k]) return;
@@ -1898,6 +1912,8 @@ function objective() {
     const s = SEC[carried];
     if (state.sec[carried].stock < shelfCap(carried)) return { pt: s.stockSpot, text: `Put the ${s.items} on the ${s.name} shelf` };
   }
+  const leftover = state.carry.find(id => !boxUsable(id));
+  if (leftover) { const s = SEC[leftover]; return { pt: s.crate, text: `${s.name} shelf is full: return the ${s.items} to the stockroom` }; }
   if (queues[0].length && !state.staff.cashier && !state.staff.cashier2) return atReg ? { pt: REG[0], text: 'Stay here to check out the line' } : { pt: REG[0], text: 'Go to the register to check out customers' };
   const piled = state.piles[0] + state.piles[1];
   if (piled >= Math.max(50, state.rate * 40)) {
@@ -1996,7 +2012,7 @@ function updateHud(dt) {
   hudTimer = 0;
   $('#incomeVal').textContent = money$(state.rate * 60);
   $('#storeName').textContent = (adminActive() ? `🛠️ ADMIN${adminSpeed() > 1 ? ' ' + adminSpeed() + 'x' : ''} · ` : '') + state.storeName;
-  currentObjective = state.lifetime < 4000 || (queues[0].length && !state.staff.cashier) ? objective() : null;
+  currentObjective = state.lifetime < 4000 || (queues[0].length && !state.staff.cashier) || state.carry.some(id => !boxUsable(id)) ? objective() : null;
   const hint = $('#hint');
   hint.textContent = currentObjective ? currentObjective.text : '';
   hint.classList.toggle('show', !!currentObjective);
