@@ -1385,7 +1385,7 @@ function render() {
   const WW = worldW();
   const tx = vw >= WW ? WW / 2 : Math.max(vw / 2, Math.min(WW - vw / 2, state.player.x));
   // The view always reaches up to the road, which shows through the see-through top bar
-  const top = ROAD_Y - 52, bottom = H + 110;   // room below the store so you stay clear of the hint banner
+  const top = ROAD_Y - 52, bottom = H + 170;   // room below the store so you stay clear of the money bar and hint
   const ty = vh >= bottom - top ? (top + bottom) / 2 : Math.max(top + vh / 2, Math.min(bottom - vh / 2, state.player.y));
   cam.x += (tx - cam.x) * 0.15; cam.y += (ty - cam.y) * 0.15;
   const shx = shake > 0 ? (Math.random() - 0.5) * shake * 10 : 0, shy = shake > 0 ? (Math.random() - 0.5) * shake * 10 : 0;
