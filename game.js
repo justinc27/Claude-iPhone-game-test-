@@ -205,8 +205,65 @@ function bank(amount, x, y) {
   if (state.admin && state.admin.unlimited) state.admin.savedMoney += amount;   // real earnings are kept
   state.lifetime += amount;
   track('earn', null, amount);
-  if (x !== undefined) fx.push({ type: 'text', text: '+' + money$(amount), x, y, t: 0, color: '#2ecc71' });
-  bumpMoney();
+  if (x !== undefined) celebrate(amount, x, y);
+  else bumpMoney();
+}
+// ---------- Feedback effects ----------
+const reducedMotion = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
+let shake = 0, flash = 0;
+const popAt = {};       // the newest item on each shelf pops in
+const signPopAt = {};   // a shelf's price sign pops when its price changes
+// "Cha-ching": coins burst out, fly up to your money, and the amount bounces up
+function celebrate(amount, x, y) {
+  const big = amount >= Math.max(300, state.rate * 15);
+  const n = big ? 18 : 9, fly = big ? 7 : 4;
+  for (let i = 0; i < n; i++) fx.push({ type: 'burst', x, y, vx: (Math.random() - 0.5) * 220, vy: -140 - Math.random() * 150, t: 0, life: 0.85 });
+  for (let i = 0; i < fly; i++) fx.push({ type: 'fly', x, y, t: -0.25 - i * 0.06, life: 0.55, last: i === fly - 1 });
+  fx.push({ type: 'text', text: '+' + money$(amount) + (big ? '!' : ''), x, y, t: 0, life: 1.3, big });
+  if (big) { if (!reducedMotion) shake = 1; flash = 1; sfx.big(); } else sfx.ching();
+}
+// Where the money counter is, in world units (coins fly there)
+function moneyTarget() {
+  const cr = canvas.getBoundingClientRect(), m = document.getElementById('money').getBoundingClientRect();
+  const sx = m.left + m.width * 0.3 - cr.left, sy = m.top + m.height / 2 - cr.top;
+  return { x: cam.x + (sx - cssW / 2) / zoom, y: cam.y + (sy - cssH / 2) / zoom };
+}
+// Where item i sits on a shelf (matches drawShelf)
+function itemPos(s, i) {
+  const r = s.shelf, vert = r.h > r.w, per = Math.min(10, shelfCap(s.id)), len = vert ? r.h : r.w;
+  const step = (len - 24) / (per - 1 || 1), col = i % per, row = Math.floor(i / per);
+  return vert ? { x: r.x + r.w / 2 + row * 6, y: r.y + 12 + col * step } : { x: r.x + 12 + col * step, y: r.y + r.h / 2 - row * 8 };
+}
+function popScale(t) {
+  if (t < 0) return 0;
+  if (t >= 0.35) return 1;
+  const k = t / 0.35, e = q => 1 - Math.pow(1 - q, 3);
+  return k < 0.6 ? e(k / 0.6) * 1.3 : 1.3 - 0.3 * e((k - 0.6) / 0.4);
+}
+// A box flies onto the shelf, the item pops in with a puff (and "+1" when you placed it)
+function shelfPlaced(s, from, byPlayer) {
+  const i = state.sec[s.id].stock - 1, p = itemPos(s, i), delay = 0.22;
+  fx.push({ type: 'box', x: from.x, y: from.y, tx: p.x, ty: p.y, t: 0, life: delay, color: s.color });
+  popAt[s.id] = { i, t: time + delay };
+  fx.push({ type: 'puff', x: p.x, y: p.y + 4, t: -delay, life: 0.4 });
+  if (byPlayer) { fx.push({ type: 'plus', x: p.x, y: p.y - 16, t: -delay, life: 0.8, color: s.color }); later(delay * 1000, sfx.pop); }
+}
+// Level-up: a gold ring around the shelf, confetti, a banner and a fanfare
+function celebrateLevel(id, milestone) {
+  signPopAt[id] = time;
+  if (holdingBuy && !milestone) { sfx.tick(); return; }
+  const r = SEC[id].shelf || SEC[id].bench;
+  fx.push({ type: 'ring', r, t: 0, life: 0.8 });
+  const cols = ['#ffc83d', '#2ecc71', '#ff5a5f', '#7fd4ff', '#c3a6ff', '#ff8fb1'];
+  for (let i = 0; i < 36; i++) fx.push({ type: 'confetti', x: r.x + r.w / 2 + (Math.random() - 0.5) * r.w * 0.6, y: r.y, vx: (Math.random() - 0.5) * 260, vy: -120 - Math.random() * 200, spin: (Math.random() - 0.5) * 16, c: cols[i % 6], t: 0, life: 1.6 });
+  const L = state.sec[id].level;
+  showLevelBanner(milestone ? `🏆 Lv ${L}! ${SEC[id].name} prices x2` : `⬆️ Lv ${L}: ${SEC[id].item} now ${money$(price(id))}`);
+  sfx.fanfare();
+}
+function showLevelBanner(words) {
+  const b = document.getElementById('levelBanner');
+  b.innerHTML = withGpuArt(escapeHtml(words));
+  b.classList.remove('show'); void b.offsetWidth; b.classList.add('show');
 }
 
 // ---------- Formatting ----------
@@ -239,11 +296,23 @@ function beep(freq = 880, dur = 0.07, type = 'sine', vol = 0.05) {
     o.start(); o.stop(audioCtx.currentTime + dur);
   } catch (e) { /* no audio */ }
 }
+let lastChing = 0;
+const later = (ms, fn) => setTimeout(fn, ms);
 const sfx = {
   pick: () => beep(700, 0.04, 'triangle', 0.025),
   drop: () => beep(520, 0.04, 'triangle', 0.025),
   scan: () => beep(1500, 0.04, 'square', 0.015),
-  cash: () => { beep(1320, 0.06, 'triangle', 0.04); setTimeout(() => beep(1760, 0.08, 'triangle', 0.04), 60); },
+  // a plain register sound, skipped when a "cha-ching" just played
+  cash: () => { if (performance.now() - lastChing < 250) return; beep(1320, 0.06, 'triangle', 0.04); later(60, () => beep(1760, 0.08, 'triangle', 0.04)); },
+  pop: () => { beep(520, 0.06, 'triangle', 0.05); later(40, () => beep(880, 0.08, 'triangle', 0.04)); },
+  ching: () => {
+    lastChing = performance.now();
+    beep(1568, 0.12, 'triangle', 0.05); later(80, () => beep(2093, 0.25, 'triangle', 0.05));
+    for (let i = 0; i < 6; i++) later(120 + i * 30, () => beep(2600 + i * 180, 0.05, 'sine', 0.015));
+  },
+  big: () => { sfx.ching(); later(50, () => beep(523, 0.18, 'square', 0.03)); later(150, () => beep(784, 0.25, 'square', 0.03)); },
+  fanfare: () => [523, 659, 784, 1047, 1319].forEach((f, i) => later(i * 90, () => beep(f, i === 4 ? 0.4 : 0.14, 'triangle', 0.05))),
+  tick: () => beep(990, 0.03, 'triangle', 0.02),
   unlock: () => [523, 659, 784, 1047].forEach((f, i) => setTimeout(() => beep(f, 0.12, 'triangle', 0.05), i * 90)),
   sad: () => beep(180, 0.2, 'sawtooth', 0.03),
 };
@@ -765,7 +834,8 @@ function updatePlayer(dt) {
     const st = state.sec[s.id];
     const i = state.carry.lastIndexOf(s.id);
     if (i >= 0 && st.stock < shelfCap(s.id) && inRect(p, s.shelf, 34) && dropTimer > 0.1) {
-      state.carry.splice(i, 1); st.stock++; dropTimer = 0; sfx.drop(); track('restock', s.id, 1);
+      state.carry.splice(i, 1); st.stock++; dropTimer = 0; track('restock', s.id, 1);
+      shelfPlaced(s, { x: p.x, y: p.y - 60 }, true);
     }
   }
   // Unlock pads: money flows in while you stand on them
@@ -802,7 +872,6 @@ function collectPile(spot, amount, clear) {
   clear();
   bank(amount, spot.x, spot.y - 30);
   for (let i = 0; i < 6; i++) fx.push({ type: 'coin', x: spot.x + Math.random() * 20 - 10, y: spot.y, tx: state.player.x, ty: state.player.y - 30, t: -i * 0.05 });
-  sfx.cash();
 }
 function hireStaff(k) {
   if (state.staff[k]) return;
@@ -935,7 +1004,7 @@ function updateStocker(dt) {
     const st = state.sec[n.target];
     if (n.timer > 0.25 * stockerHandTime()) {
       n.timer = 0;
-      if (n.carry.length && st.stock < shelfCap(n.target)) { n.carry.pop(); st.stock++; }
+      if (n.carry.length && st.stock < shelfCap(n.target)) { n.carry.pop(); st.stock++; shelfPlaced(SEC[n.target], { x: n.x, y: n.y - 60 }, false); }
       else { n.carry = []; n.job = 'idle'; }
     }
   }
@@ -961,7 +1030,9 @@ function update(dt, movePlayer = true) {
   updateService(dt);
 
   for (const f of fx) f.t += dt;
-  fx = fx.filter(f => f.t < (f.type === 'text' ? 1.2 : 0.6));
+  for (const f of fx) if (f.type === 'fly' && f.last && !f.done && f.t >= f.life) { f.done = true; bumpMoney(); }
+  fx = fx.filter(f => f.t < (f.life || (f.type === 'text' ? 1.2 : 0.6)));
+  shake = Math.max(0, shake - dt * 3); flash = Math.max(0, flash - dt * 2.5);
 }
 
 // ---------- Rendering ----------
@@ -1062,7 +1133,8 @@ function render() {
   const top = ROAD_Y - 52, bottom = H + 110;   // room below the store so you stay clear of the hint banner
   const ty = vh >= bottom - top ? (top + bottom) / 2 : Math.max(top + vh / 2, Math.min(bottom - vh / 2, state.player.y));
   cam.x += (tx - cam.x) * 0.15; cam.y += (ty - cam.y) * 0.15;
-  ctx.setTransform(zoom * DPR, 0, 0, zoom * DPR, (cssW / 2 - cam.x * zoom) * DPR, (cssH / 2 - cam.y * zoom) * DPR);
+  const shx = shake > 0 ? (Math.random() - 0.5) * shake * 10 : 0, shy = shake > 0 ? (Math.random() - 0.5) * shake * 10 : 0;
+  ctx.setTransform(zoom * DPR, 0, 0, zoom * DPR, (cssW / 2 - cam.x * zoom + shx) * DPR, (cssH / 2 - cam.y * zoom + shy) * DPR);
 
   drawRoad();
   drawFloor();
@@ -1086,6 +1158,7 @@ function render() {
   drawFx();
   drawObjective();
   drawVignette();
+  if (flash > 0) { ctx.fillStyle = `rgba(255,214,90,${flash * 0.3})`; ctx.fillRect(0, 0, canvas.width, canvas.height); }
 }
 
 // A soft drop shadow under furniture (light comes from the top left)
@@ -1297,8 +1370,10 @@ function drawShelf(s) {
   const step = (len - 24) / (per - 1 || 1);
   for (let i = 0; i < st.stock; i++) {
     const col = i % per, row = Math.floor(i / per);
-    if (vert) drawEmoji(s.icon, r.x + r.w / 2 + row * 6, r.y + 12 + col * step, 17);
-    else drawEmoji(s.icon, r.x + 12 + col * step, r.y + r.h / 2 - row * 8, 17);
+    const pop = popAt[s.id], sc = pop && pop.i === i ? popScale(time - pop.t) : 1;
+    if (sc <= 0) continue;
+    if (vert) drawEmoji(s.icon, r.x + r.w / 2 + row * 6, r.y + 12 + col * step, 17 * sc);
+    else drawEmoji(s.icon, r.x + 12 + col * step, r.y + r.h / 2 - row * 8, 17 * sc);
   }
   // sign
   const label = `${s.name} · ${money$(price(s.id))}`;
@@ -1306,8 +1381,12 @@ function drawShelf(s) {
   const lw = ctx.measureText(label).width + 20;
   const lx = Math.max(20 + lw / 2, Math.min(W_FULL - 20 - lw / 2, r.x + r.w / 2));
   const ly = s.id === 'gpu' ? r.y + r.h + 22 : r.y - 14;
+  const sp = signPopAt[s.id] !== undefined ? time - signPopAt[s.id] : 9;
+  const ss = sp < 0.4 ? 1 + 0.25 * Math.sin(sp / 0.4 * Math.PI) : 1;
+  ctx.save(); ctx.translate(lx, ly); ctx.scale(ss, ss); ctx.translate(-lx, -ly);
   rr(lx - lw / 2, ly - 10, lw, 20, 8); ctx.fillStyle = s.color; ctx.fill();
   text(label, lx, ly, 11, '#fff');
+  ctx.restore();
   const cx = vert ? (r.x < W_MAIN / 2 ? r.x + r.w + 6 : r.x - 6) : r.x + r.w + 8;
   const cy = vert ? r.y + r.h + 14 : r.y + r.h / 2;
   text(`${st.stock}/${cap}`, cx, cy, 11, st.stock ? '#6b6390' : '#ff5a5f', 700, vert ? (r.x < W_MAIN / 2 ? 'left' : 'right') : 'left');
@@ -1575,12 +1654,45 @@ function drawBubble(c) {
 }
 
 function drawFx() {
+  let target = null;
+  const ease = q => 1 - Math.pow(1 - q, 3);
   for (const f of fx) {
+    if (f.t < 0 && f.type !== 'coin') continue;
     if (f.type === 'text') {
-      ctx.globalAlpha = Math.max(0, 1 - f.t / 1.2);
-      outlinedText(f.text, f.x, f.y - f.t * 40, 18, '#7ef0a8', '#1e5e36');
+      const life = f.life || 1.2, k = f.t / life;
+      const sc = f.big ? 1 + 0.35 * Math.max(0, 1 - k * 4) : 1 + 0.2 * Math.max(0, 1 - k * 5);
+      ctx.globalAlpha = Math.max(0, 1 - Math.max(0, k - 0.55) / 0.45);
+      ctx.save(); ctx.translate(f.x, f.y - k * 46); ctx.scale(sc, sc);
+      outlinedText(f.text, 0, 0, f.big ? 26 : 18, f.big ? '#ffe17a' : '#7ef0a8', f.big ? '#8a5a00' : '#1e5e36');
+      ctx.restore();
+    } else if (f.type === 'burst') {
+      const x = f.x + f.vx * f.t, y = f.y + f.vy * f.t + 260 * f.t * f.t;
+      ctx.globalAlpha = Math.min(1, 2 - 2 * f.t / f.life);
+      ctx.beginPath(); ctx.ellipse(x, y, 6 * Math.abs(Math.cos(f.t * 12)) + 1.5, 6, 0, 0, Math.PI * 2);
+      ctx.fillStyle = '#ffc83d'; ctx.fill(); ctx.strokeStyle = '#d99a00'; ctx.lineWidth = 1.5; ctx.stroke();
+    } else if (f.type === 'fly') {
+      target = target || moneyTarget();
+      const k = ease(Math.min(1, f.t / f.life));
+      ctx.beginPath(); ctx.arc(f.x + (target.x - f.x) * k, f.y + (target.y - f.y) * k - Math.sin(k * Math.PI) * 30, 5, 0, Math.PI * 2);
+      ctx.fillStyle = '#ffc83d'; ctx.fill(); ctx.strokeStyle = '#d99a00'; ctx.lineWidth = 1.2; ctx.stroke();
+    } else if (f.type === 'puff') {
+      const k = f.t / f.life;
+      ctx.globalAlpha = 1 - k; ctx.fillStyle = '#fff';
+      for (let a = 0; a < 6; a++) { const ang = a / 6 * Math.PI * 2; ctx.beginPath(); ctx.arc(f.x + Math.cos(ang) * k * 18, f.y + Math.sin(ang) * k * 9, 3 + 4 * k, 0, Math.PI * 2); ctx.fill(); }
+    } else if (f.type === 'plus') {
+      const k = f.t / f.life;
+      ctx.globalAlpha = 1 - Math.max(0, k - 0.5) / 0.5;
+      outlinedText('+1', f.x, f.y - k * 22, 13, '#fff', shade(f.color, -0.35));
+    } else if (f.type === 'ring') {
+      const k = f.t / f.life, r = f.r;
+      ctx.globalAlpha = 1 - k; ctx.lineWidth = 6; ctx.strokeStyle = '#ffc83d';
+      rr(r.x - 22 * k, r.y - 22 * k, r.w + 44 * k, r.h + 44 * k, 14); ctx.stroke();
+    } else if (f.type === 'confetti') {
+      const x = f.x + f.vx * f.t, y = f.y + f.vy * f.t + 200 * f.t * f.t;
+      ctx.globalAlpha = Math.min(1, 2.5 - 2.5 * f.t / f.life);
+      ctx.save(); ctx.translate(x, y); ctx.rotate(f.t * f.spin); ctx.fillStyle = f.c; ctx.fillRect(-4, -2.5, 8, 5); ctx.restore();
     } else if (f.type === 'box') {
-      const k = Math.min(1, f.t / 0.6);
+      const k = Math.min(1, f.t / (f.life || 0.6));
       rr(f.x + (f.tx - f.x) * k - 9, f.y + (f.ty - f.y) * k - Math.sin(k * Math.PI) * 40 - 7, 18, 14, 3); ctx.fillStyle = f.color; ctx.fill();
     } else if (f.type === 'coin') {
       if (f.t < 0) continue;
@@ -1687,10 +1799,13 @@ window.addEventListener('blur', () => keys.clear());
 // ---------- HUD ----------
 const $ = sel => document.querySelector(sel);
 let lastMoneyText = '';
+let shownMoney = NaN;
 function bumpMoney() { const m = $('#money'); m.classList.remove('bump'); void m.offsetWidth; m.classList.add('bump'); }
 let hudTimer = 0;
 function updateHud(dt) {
-  const mt = fmt(state.money);
+  if (!(shownMoney <= state.money)) shownMoney = state.money;   // spending shows at once
+  else if (shownMoney < state.money) shownMoney = Math.min(state.money, shownMoney + Math.max(1, (state.money - shownMoney) * Math.min(1, dt * 6)));
+  const mt = fmt(Math.floor(shownMoney));
   if (mt !== lastMoneyText) { $('#moneyVal').textContent = mt; lastMoneyText = mt; }
   hudTimer += dt;
   if (hudTimer < 0.25) return;
@@ -1848,10 +1963,7 @@ function handleAction(el, act, id) {
     case 'level':
       if (spend(levelCost(id))) {
         state.sec[id].level++;
-        sfx.unlock();
-        const L = state.sec[id].level;
-        if (MILESTONES.includes(L)) toast(`🏆 ${SEC[id].name} Lv ${L}! Prices x2`);
-        else if (!holdingBuy) toast(`⬆️ ${SEC[id].name} Lv ${L}: ${SEC[id].item} now sells for ${money$(price(id))}`);
+        celebrateLevel(id, MILESTONES.includes(state.sec[id].level));
         showUpgrades();
       }
       break;

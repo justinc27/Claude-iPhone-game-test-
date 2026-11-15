@@ -131,6 +131,21 @@ button {
 .modal-card .speed-row .btn { flex: 1; min-height: 40px; min-width: 0; margin-top: 0; padding: 4px; }
 .gpu-icon { height: 0.9em; width: auto; vertical-align: -0.1em; }
 .avatar .gpu-icon { height: auto; width: 46px; vertical-align: middle; }
+#levelBanner {
+  position: fixed; left: 50%; top: calc(var(--safe-top) + 110px); z-index: 60;
+  transform: translate(-50%, -160px); opacity: 0; pointer-events: none;
+  max-width: calc(100% - 32px); width: max-content; padding: 10px 18px; border-radius: 16px;
+  background: #2b2350; border: 3px solid var(--gold); color: var(--gold);
+  font-weight: 700; font-size: 16px; text-align: center; box-shadow: 0 5px 0 rgba(0,0,0,.3);
+}
+#levelBanner.show { animation: levelBanner 2.2s ease forwards; }
+@keyframes levelBanner {
+  0% { transform: translate(-50%, -160px); opacity: 0; }
+  14%, 86% { transform: translate(-50%, 0); opacity: 1; }
+  100% { transform: translate(-50%, -160px); opacity: 0; }
+}
+@keyframes levelFade { 0%, 100% { transform: translate(-50%, 0); opacity: 0; } 14%, 86% { transform: translate(-50%, 0); opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { #levelBanner.show { animation-name: levelFade; } }
 .meter { height: 8px; border-radius: 4px; background: #ece8fb; margin: 4px 0 3px; overflow: hidden; }
 .meter i { display: block; height: 100%; background: linear-gradient(90deg, #7ef0a8, var(--green)); border-radius: 4px; }
 #upgradeBtn .dot {
