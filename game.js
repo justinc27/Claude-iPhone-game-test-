@@ -243,7 +243,7 @@ function popScale(t) {
 // A box flies onto the shelf, the item pops in with a puff (and "+1" when you placed it)
 function shelfPlaced(s, from, byPlayer) {
   const i = state.sec[s.id].stock - 1, p = itemPos(s, i), delay = 0.22;
-  fx.push({ type: 'box', x: from.x, y: from.y, tx: p.x, ty: p.y, t: 0, life: delay, color: s.color });
+  fx.push({ type: 'box', x: from.x, y: from.y, tx: p.x, ty: p.y, t: 0, life: delay, color: s.color, carried: true });
   popAt[s.id] = { i, t: time + delay };
   fx.push({ type: 'puff', x: p.x, y: p.y + 4, t: -delay, life: 0.4 });
   if (byPlayer) { fx.push({ type: 'plus', x: p.x, y: p.y - 16, t: -delay, life: 0.8, color: s.color }); later(delay * 1000, sfx.pop); }
@@ -1700,6 +1700,18 @@ function shade(hex, amt) {
   return `rgb(${f(n >> 16)},${f((n >> 8) & 255)},${f(n & 255)})`;
 }
 const OUTLINE = 'rgba(43,35,80,.6)';
+// A cardboard box (centred on x, y) with packing tape and a sticker in the section's colour
+function drawCardboard(x, y, w, h, color) {
+  const x0 = x - w / 2, y0 = y - h / 2;
+  rr(x0, y0, w, h, 2.5); ctx.fillStyle = '#c99556'; ctx.fill();
+  ctx.fillStyle = '#a8763d'; ctx.fillRect(x0 + 1, y0 + h - 3, w - 2, 2);            // shaded front edge
+  ctx.fillStyle = '#ddb27a'; ctx.fillRect(x0 + 1, y0 + 1, w - 2, 2);                // light top edge
+  ctx.fillStyle = 'rgba(240,215,160,.9)'; ctx.fillRect(x - 2.5, y0, 5, h);          // packing tape
+  ctx.strokeStyle = 'rgba(120,80,35,.35)'; ctx.lineWidth = 0.8;
+  ctx.beginPath(); ctx.moveTo(x0 + 2, y0 + h * 0.45); ctx.lineTo(x - 3, y0 + h * 0.45); ctx.moveTo(x + 3, y0 + h * 0.45); ctx.lineTo(x0 + w - 2, y0 + h * 0.45); ctx.stroke();   // flap seam
+  rr(x0 + w - 8, y0 + h - 7, 6, 4.5, 1); ctx.fillStyle = color; ctx.fill();          // section sticker
+  rr(x0, y0, w, h, 2.5); ctx.strokeStyle = '#7a5226'; ctx.lineWidth = 1.2; ctx.stroke();
+}
 function drawPerson(o, kind) {
   const x = o.x, y = o.y, face = o.face || 1;
   const ph = time * 12 + (o.x * 0.7 + o.y * 0.3) * 0.05;
@@ -1782,8 +1794,7 @@ function drawPerson(o, kind) {
   // carried boxes
   for (let i = 0; i < stack.length; i++) {
     const by = y - 60 + bob - i * 12;
-    rr(x - 11, by - 6, 22, 13, 3); ctx.fillStyle = SEC[stack[i]].color; ctx.fill();
-    ctx.strokeStyle = 'rgba(0,0,0,.25)'; ctx.lineWidth = 1.5; ctx.stroke();
+    drawCardboard(x, by, 22, 13, SEC[stack[i]].color);
   }
   if (kind === 'player' && stack.length >= carryCap()) outlinedText('FULL', x, y - 68 - stack.length * 12, 11, '#fff');
   if (o.carryPC) drawEmoji('🖥️', x + 14, y - 20, 16);
@@ -1847,7 +1858,9 @@ function drawFx() {
       ctx.save(); ctx.translate(x, y); ctx.rotate(f.t * f.spin); ctx.fillStyle = f.c; ctx.fillRect(-4, -2.5, 8, 5); ctx.restore();
     } else if (f.type === 'box') {
       const k = Math.min(1, f.t / (f.life || 0.6));
-      rr(f.x + (f.tx - f.x) * k - 9, f.y + (f.ty - f.y) * k - Math.sin(k * Math.PI) * 40 - 7, 18, 14, 3); ctx.fillStyle = f.color; ctx.fill();
+      const bx = f.x + (f.tx - f.x) * k, by = f.y + (f.ty - f.y) * k - Math.sin(k * Math.PI) * 40;
+      if (f.carried) drawCardboard(bx, by, 20, 13, f.color);
+      else { rr(bx - 9, by - 7, 18, 14, 3); ctx.fillStyle = f.color; ctx.fill(); }
     } else if (f.type === 'coin') {
       if (f.t < 0) continue;
       const k = f.t / 0.6;
