@@ -853,12 +853,15 @@ function updatePlayer(dt) {
   if (state.benchPile >= 1 && dist(p, BENCH_PILE) < 70) collectPile(BENCH_PILE, state.benchPile, () => { state.benchPile = 0; });
   // Stockroom crates: pick up boxes
   pickTimer += dt; dropTimer += dt;
+  let returning = null;
   for (const s of unlockedParts()) {
-    if (!inRect(p, crateRect(s)) || pickTimer <= 0.13) continue;
+    if (!inRect(p, crateRect(s))) continue;
+    if (!boxUsable(s.id) && state.carry.includes(s.id) && state.crates[s.id] < crateMax()) returning = s;
+    if (pickTimer <= 0.13) continue;
     if (!boxUsable(s.id)) {
-      // shelf is full and no job needs one: boxes of this type go back into the crate
+      // shelf is full and no job needs one: after a short wait, boxes of this type go back into the crate
       const i = state.carry.lastIndexOf(s.id);
-      if (i >= 0 && state.crates[s.id] < crateMax()) {
+      if (i >= 0 && state.crates[s.id] < crateMax() && returnWait >= RETURN_DELAY) {
         state.carry.splice(i, 1); state.crates[s.id]++; pickTimer = 0; sfx.drop();
         fx.push({ type: 'box', x: p.x, y: p.y - 60, tx: s.crate.x, ty: s.crate.y, t: 0, life: 0.22, color: s.color, carried: true });
       }
@@ -866,6 +869,8 @@ function updatePlayer(dt) {
       state.carry.push(s.id); state.crates[s.id]--; pickTimer = 0; sfx.pick();
     }
   }
+  if (returning && returning === returnCrate) returnWait += dt;
+  else { returnWait = 0; returnCrate = returning; }
   // Shelves: drop matching boxes
   for (const s of unlockedParts()) {
     const st = state.sec[s.id];
@@ -910,6 +915,9 @@ function collectPile(spot, amount, clear) {
   bank(amount, spot.x, spot.y - 30);
   for (let i = 0; i < 6; i++) fx.push({ type: 'coin', x: spot.x + Math.random() * 20 - 10, y: spot.y, tx: state.player.x, ty: state.player.y - 30, t: -i * 0.05 });
 }
+// Stand on the crate this long before boxes start going back (so you don't return them by accident)
+const RETURN_DELAY = 1;
+let returnWait = 0, returnCrate = null;
 // Is there anywhere to put a box of this type right now: shelf space, or a Service Station job that needs it?
 function boxUsable(id) {
   if (state.sec[id].stock < shelfCap(id)) return true;
@@ -1219,6 +1227,7 @@ function render() {
   for (const c of customers) drawBubble(c);
 
   drawFx();
+  drawReturnTimer();
   drawObjective();
   drawVignette();
   if (flash > 0) { ctx.fillStyle = `rgba(255,214,90,${flash * 0.3})`; ctx.fillRect(0, 0, canvas.width, canvas.height); }
@@ -1848,6 +1857,16 @@ function drawBubble(c) {
   if (red) outlinedText('!', x + 14, y - 12, 14, '#ff5a5f', '#fff');
 }
 
+// A small timer beside your box stack while you wait for boxes to go back in the crate
+function drawReturnTimer() {
+  if (!returnCrate || returnWait <= 0 || returnWait >= RETURN_DELAY) return;
+  const p = state.player, k = returnWait / RETURN_DELAY;
+  const x = p.x + 24, y = p.y - 62;
+  ctx.beginPath(); ctx.arc(x, y, 11, 0, Math.PI * 2); ctx.fillStyle = '#fff'; ctx.fill();
+  ctx.strokeStyle = '#2b2350'; ctx.lineWidth = 2; ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(x, y); ctx.arc(x, y, 8, -Math.PI / 2, -Math.PI / 2 + k * Math.PI * 2); ctx.closePath();
+  ctx.fillStyle = '#ffc83d'; ctx.fill();
+}
 function drawFx() {
   let target = null;
   const ease = q => 1 - Math.pow(1 - q, 3);
