@@ -856,14 +856,24 @@ function updatePlayer(dt) {
   let returning = null;
   for (const s of unlockedParts()) {
     if (!inRect(p, crateRect(s))) continue;
-    if (!boxUsable(s.id) && state.carry.includes(s.id) && state.crates[s.id] < crateMax()) returning = s;
+    if (!boxUsable(s.id) && state.carry.includes(s.id)) returning = s;
     if (pickTimer <= 0.13) continue;
     if (!boxUsable(s.id)) {
       // shelf is full and no job needs one: after a short wait, boxes of this type go back into the crate
       const i = state.carry.lastIndexOf(s.id);
-      if (i >= 0 && state.crates[s.id] < crateMax() && returnWait >= RETURN_DELAY) {
-        state.carry.splice(i, 1); state.crates[s.id]++; pickTimer = 0; sfx.drop();
-        fx.push({ type: 'box', x: p.x, y: p.y - 60, tx: s.crate.x, ty: s.crate.y, t: 0, life: 0.22, color: s.color, carried: true });
+      if (i >= 0 && returnWait >= RETURN_DELAY) {
+        state.carry.splice(i, 1); pickTimer = 0;
+        if (state.crates[s.id] < crateMax()) {
+          state.crates[s.id]++; sfx.drop();
+          fx.push({ type: 'box', x: p.x, y: p.y - 60, tx: s.crate.x, ty: s.crate.y, t: 0, life: 0.22, color: s.color, carried: true });
+        } else {
+          // crate is full: the box goes back to the supplier for a small restocking fee
+          const fee = Math.min(state.money, restockFee(s.id));
+          state.money -= fee;
+          beep(330, 0.08, 'triangle', 0.035);
+          fx.push({ type: 'box', x: p.x, y: p.y - 60, tx: DOCK_X, ty: 4, t: 0, life: 0.45, color: s.color, carried: true });
+          if (fee > 0) fx.push({ type: 'text', text: '-' + money$(fee), x: p.x + 18, y: p.y - 70, t: 0, life: 1.1, bad: true });
+        }
       }
     } else if (state.carry.length < carryCap() && state.crates[s.id] > 0) {
       state.carry.push(s.id); state.crates[s.id]--; pickTimer = 0; sfx.pick();
@@ -917,6 +927,8 @@ function collectPile(spot, amount, clear) {
 }
 // Stand on the crate this long before boxes start going back (so you don't return them by accident)
 const RETURN_DELAY = 1;
+// Returning a box when its crate is full costs 10% of its shelf price (at least $1)
+function restockFee(id) { return Math.max(1, Math.round(price(id) * 0.1)); }
 let returnWait = 0, returnCrate = null;
 // Is there anywhere to put a box of this type right now: shelf space, or a Service Station job that needs it?
 function boxUsable(id) {
@@ -1877,7 +1889,7 @@ function drawFx() {
       const sc = f.big ? 1 + 0.35 * Math.max(0, 1 - k * 4) : 1 + 0.2 * Math.max(0, 1 - k * 5);
       ctx.globalAlpha = Math.max(0, 1 - Math.max(0, k - 0.55) / 0.45);
       ctx.save(); ctx.translate(f.x, f.y - k * 46); ctx.scale(sc, sc);
-      outlinedText(f.text, 0, 0, f.big ? 26 : 18, f.big ? '#ffe17a' : '#7ef0a8', f.big ? '#8a5a00' : '#1e5e36');
+      outlinedText(f.text, 0, 0, f.big ? 26 : f.bad ? 15 : 18, f.bad ? '#ffb3b5' : f.big ? '#ffe17a' : '#7ef0a8', f.bad ? '#9b1c22' : f.big ? '#8a5a00' : '#1e5e36');
       ctx.restore();
     } else if (f.type === 'burst') {
       const x = f.x + f.vx * f.t, y = f.y + f.vy * f.t + 260 * f.t * f.t;
