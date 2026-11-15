@@ -980,7 +980,37 @@ function resize() {
 window.addEventListener('resize', resize);
 
 const emojiCache = {};
+// Graphics cards are drawn as a real card (fans, bracket, gold pins). The 🎮 character
+// in SEC.gpu.icon and the GPU event is the marker that gets swapped for this picture.
+const GPU_ICON = '🎮';
+const gpuArt = (() => {
+  const c = document.createElement('canvas'); c.width = 160; c.height = 80;
+  const g = c.getContext('2d');
+  const r = (x, y, w, h, rad) => { g.beginPath(); g.moveTo(x + rad, y); g.arcTo(x + w, y, x + w, y + h, rad); g.arcTo(x + w, y + h, x, y + h, rad); g.arcTo(x, y + h, x, y, rad); g.arcTo(x, y, x + w, y, rad); g.closePath(); };
+  // metal bracket
+  r(4, 8, 14, 62, 3); g.fillStyle = '#c8ccd6'; g.fill(); g.strokeStyle = '#7d8394'; g.lineWidth = 2; g.stroke();
+  g.fillStyle = '#7d8394'; for (let i = 0; i < 3; i++) { r(8, 16 + i * 14, 6, 8, 2); g.fill(); }
+  // circuit board and gold connector pins
+  r(16, 54, 136, 12, 3); g.fillStyle = '#1f6f4a'; g.fill();
+  g.fillStyle = '#f2c14e'; for (let i = 0; i < 10; i++) g.fillRect(44 + i * 8, 65, 5, 9);
+  // cooler shroud with an orange accent
+  r(16, 8, 138, 50, 10); g.fillStyle = '#2b2d3a'; g.fill(); g.strokeStyle = '#14151d'; g.lineWidth = 2.5; g.stroke();
+  r(24, 12, 122, 5, 2.5); g.fillStyle = '#ff9f43'; g.fill();
+  // two fans
+  for (const fx of [56, 114]) {
+    g.beginPath(); g.arc(fx, 35, 18, 0, Math.PI * 2); g.fillStyle = '#14151d'; g.fill();
+    g.fillStyle = '#6a7083';
+    for (let k = 0; k < 7; k++) { const a = k * Math.PI * 2 / 7; g.beginPath(); g.ellipse(fx + Math.cos(a) * 9, 35 + Math.sin(a) * 9, 8, 3.2, a + 0.6, 0, Math.PI * 2); g.fill(); }
+    g.beginPath(); g.arc(fx, 35, 5, 0, Math.PI * 2); g.fillStyle = '#ff9f43'; g.fill();
+    g.beginPath(); g.arc(fx, 35, 18, 0, Math.PI * 2); g.strokeStyle = '#454a5a'; g.lineWidth = 2; g.stroke();
+  }
+  return c;
+})();
+const GPU_IMG = `<img class="gpu-icon" src="${gpuArt.toDataURL()}" alt="graphics card">`;
+function withGpuArt(html) { return html.split(GPU_ICON).join(GPU_IMG); }
+function escapeHtml(t) { return t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
 function drawEmoji(ch, x, y, size) {
+  if (ch === GPU_ICON) { const w = size * 1.55, h = w / 2; ctx.drawImage(gpuArt, x - w / 2, y - h / 2, w, h); return; }
   const px = Math.max(4, Math.round(size * zoom * DPR));
   const key = ch + px;
   let c = emojiCache[key];
@@ -1290,10 +1320,25 @@ function drawShelf(s) {
 function drawCashPile(spot, amount) {
   if (amount < 1) return;
   const n = Math.min(10, 1 + Math.floor(Math.log2(amount / 20 + 1)));
+  // soft pulsing gold glow so waiting cash is easy to spot
+  const pulse = 0.5 + 0.5 * Math.sin(time * 4 + spot.x);
+  const cy = spot.y + 6 - n * 2, rad = 30 + pulse * 6;
+  const glow = ctx.createRadialGradient(spot.x, cy, 4, spot.x, cy, rad);
+  glow.addColorStop(0, `rgba(255,214,90,${0.45 + 0.2 * pulse})`); glow.addColorStop(1, 'rgba(255,214,90,0)');
+  ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(spot.x, cy, rad, 0, Math.PI * 2); ctx.fill();
   for (let i = 0; i < n; i++) {
     rr(spot.x - 12 + (i % 2) * 3, spot.y - i * 4, 24, 12, 2); ctx.fillStyle = i % 2 ? '#2ecc71' : '#27ae60'; ctx.fill();
     ctx.strokeStyle = '#1e7a45'; ctx.lineWidth = 1; ctx.stroke();
   }
+  // a light edge on the top bill and a little twinkle
+  const top = spot.y - (n - 1) * 4;
+  ctx.strokeStyle = 'rgba(255,255,255,.6)'; ctx.lineWidth = 1.2;
+  ctx.beginPath(); ctx.moveTo(spot.x - 9 + ((n - 1) % 2) * 3, top + 1.5); ctx.lineTo(spot.x + 9 + ((n - 1) % 2) * 3, top + 1.5); ctx.stroke();
+  const tw = (Math.sin(time * 5 + spot.y) + 1) / 2, sx = spot.x + 14, sy = top - 3, sr = 2.5 + 2.5 * tw;
+  ctx.globalAlpha = 0.35 + 0.65 * tw; ctx.fillStyle = '#fff';
+  ctx.beginPath(); ctx.moveTo(sx, sy - sr); ctx.lineTo(sx + sr * 0.3, sy - sr * 0.3); ctx.lineTo(sx + sr, sy); ctx.lineTo(sx + sr * 0.3, sy + sr * 0.3);
+  ctx.lineTo(sx, sy + sr); ctx.lineTo(sx - sr * 0.3, sy + sr * 0.3); ctx.lineTo(sx - sr, sy); ctx.lineTo(sx - sr * 0.3, sy - sr * 0.3); ctx.closePath(); ctx.fill();
+  ctx.globalAlpha = 1;
   outlinedText(money$(amount), spot.x, spot.y - n * 4 - 12, 12, '#7ef0a8', '#1e5e36');
 }
 function drawCheckout() {
@@ -1661,7 +1706,7 @@ function updateHud(dt) {
   $('#missionsBtn').classList.toggle('alert', anyClaimable());
   const eb = $('#eventBanner');
   eb.classList.toggle('show', !!rushEvent);
-  if (rushEvent) eb.innerHTML = `<b>${rushEvent.icon} ${rushEvent.name}</b> ${rushEvent.desc} · ${Math.ceil(eventLeft)}s`;
+  if (rushEvent) eb.innerHTML = withGpuArt(`<b>${rushEvent.icon} ${rushEvent.name}</b> ${rushEvent.desc} · ${Math.ceil(eventLeft)}s`);
   if (!$('#modal').classList.contains('hidden')) {
     document.querySelectorAll('#modalCard [data-cost]').forEach(b => b.classList.toggle('disabled', state.money < +b.dataset.cost));
   }
@@ -1768,7 +1813,7 @@ function confetti() {
 function toast(msg) {
   const el = document.createElement('div');
   el.className = 'toast';
-  el.textContent = msg;
+  el.innerHTML = withGpuArt(escapeHtml(msg));
   const box = $('#toasts');
   while (box.children.length >= 3) box.firstChild.remove();
   box.appendChild(el);
@@ -1778,7 +1823,7 @@ function showModal(html, sheet = false) {
   const card = $('#modalCard');
   const refreshing = sheet && !$('#modal').classList.contains('hidden') && card.classList.contains('sheet');
   const scroll = refreshing ? card.scrollTop : 0;
-  card.innerHTML = html;
+  card.innerHTML = withGpuArt(html);
   card.scrollTop = scroll;
   $('#modalCard').classList.toggle('sheet', sheet);
   $('#modal').classList.toggle('as-sheet', sheet);
