@@ -1221,6 +1221,27 @@ function drawStockroom() {
   }
 }
 
+// A shelf in its section's colour, with a fine grain and speckle for texture
+function shelfBody(r, color) {
+  rr(r.x, r.y + 8, r.w, r.h, 10); ctx.fillStyle = shade(color, -0.35); ctx.fill();
+  rr(r.x, r.y, r.w, r.h, 10); ctx.fillStyle = shade(color, 0.12); ctx.fill();
+  const ix = r.x + 5, iy = r.y + 5, iw = r.w - 10, ih = r.h - 10;
+  rr(ix, iy, iw, ih, 7); ctx.fillStyle = shade(color, -0.14); ctx.fill();
+  ctx.save();
+  rr(ix, iy, iw, ih, 7); ctx.clip();
+  ctx.strokeStyle = 'rgba(255,255,255,.09)'; ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  for (let d = -ih; d < iw; d += 7) { ctx.moveTo(ix + d, iy + ih); ctx.lineTo(ix + d + ih, iy); }
+  ctx.stroke();
+  let h = (r.x * 73856093) ^ (r.y * 19349663);
+  ctx.fillStyle = 'rgba(0,0,0,.08)';
+  for (let k = 0, n = Math.floor(iw * ih / 120); k < n; k++) {
+    h = (h * 1103515245 + 12345) & 0x7fffffff;
+    ctx.fillRect(ix + (h % iw), iy + ((h >> 8) % ih), 1.5, 1.5);
+  }
+  ctx.restore();
+  rr(r.x + 8, r.y + 2, r.w - 16, 3, 1.5); ctx.fillStyle = 'rgba(255,255,255,.35)'; ctx.fill();
+}
 function drawShelf(s) {
   const st = state.sec[s.id];
   const r = s.shelf;
@@ -1238,9 +1259,7 @@ function drawShelf(s) {
     rr(r.x - 30, r.y - 30, r.w + 60, r.h + 60, 18); ctx.fillStyle = s.color; ctx.fill();
     ctx.globalAlpha = 1;
   }
-  rr(r.x, r.y + 8, r.w, r.h, 10); ctx.fillStyle = '#5a4a9a'; ctx.fill();
-  rr(r.x, r.y, r.w, r.h, 10); ctx.fillStyle = '#8b7ad6'; ctx.fill();
-  rr(r.x + 5, r.y + 5, r.w - 10, r.h - 10, 7); ctx.fillStyle = '#6d5cc0'; ctx.fill();
+  shelfBody(r, s.color);
   // items on the shelf
   const cap = shelfCap(s.id);
   const per = Math.min(10, cap);
