@@ -1080,21 +1080,39 @@ const gpuArt = (() => {
 const GPU_IMG = `<img class="gpu-icon" src="${gpuArt.toDataURL()}" alt="graphics card">`;
 function withGpuArt(html) { return html.split(GPU_ICON).join(GPU_IMG); }
 function escapeHtml(t) { return t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
-function drawEmoji(ch, x, y, size) {
-  if (ch === GPU_ICON) { const w = size * 1.55, h = w / 2; ctx.drawImage(gpuArt, x - w / 2, y - h / 2, w, h); return; }
+// The graphics card with a soft drop shadow baked in (drawn once)
+const gpuArtShadow = (() => {
+  const pad = 14, c = document.createElement('canvas');
+  c.width = gpuArt.width + pad * 2; c.height = gpuArt.height + pad * 2;
+  const g = c.getContext('2d');
+  g.shadowColor = 'rgba(20,10,50,.6)'; g.shadowBlur = 7; g.shadowOffsetX = 6; g.shadowOffsetY = 11;
+  g.drawImage(gpuArt, pad, pad);
+  return c;
+})();
+// shadow = true adds a soft drop shadow (used for products on shelves)
+function drawEmoji(ch, x, y, size, shadow = false) {
+  if (ch === GPU_ICON) {
+    const w = size * 1.55, h = w / 2;
+    if (!shadow) { ctx.drawImage(gpuArt, x - w / 2, y - h / 2, w, h); return; }
+    const k = w / gpuArt.width;
+    ctx.drawImage(gpuArtShadow, x - w / 2 - 14 * k, y - h / 2 - 14 * k, gpuArtShadow.width * k, gpuArtShadow.height * k);
+    return;
+  }
   const px = Math.max(4, Math.round(size * zoom * DPR));
-  const key = ch + px;
+  const key = ch + px + (shadow ? 's' : '');
+  const box = shadow ? 1.7 : 1.4;
   let c = emojiCache[key];
   if (!c) {
     c = document.createElement('canvas');
-    c.width = c.height = Math.ceil(px * 1.4);
+    c.width = c.height = Math.ceil(px * box);
     const g = c.getContext('2d');
     g.textAlign = 'center'; g.textBaseline = 'middle';
     g.font = `${px}px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif`;
+    if (shadow) { g.shadowColor = 'rgba(20,10,50,.6)'; g.shadowBlur = px * 0.12; g.shadowOffsetX = px * 0.1; g.shadowOffsetY = px * 0.17; }
     g.fillText(ch, c.width / 2, c.height / 2 + px * 0.06);
     emojiCache[key] = c;
   }
-  ctx.drawImage(c, x - size * 0.7, y - size * 0.7, size * 1.4, size * 1.4);
+  ctx.drawImage(c, x - size * box / 2, y - size * box / 2, size * box, size * box);
 }
 function rr(x, y, w, h, r) {
   ctx.beginPath();
@@ -1372,8 +1390,8 @@ function drawShelf(s) {
     const col = i % per, row = Math.floor(i / per);
     const pop = popAt[s.id], sc = pop && pop.i === i ? popScale(time - pop.t) : 1;
     if (sc <= 0) continue;
-    if (vert) drawEmoji(s.icon, r.x + r.w / 2 + row * 6, r.y + 12 + col * step, 17 * sc);
-    else drawEmoji(s.icon, r.x + 12 + col * step, r.y + r.h / 2 - row * 8, 17 * sc);
+    if (vert) drawEmoji(s.icon, r.x + r.w / 2 + row * 6, r.y + 12 + col * step, 17 * sc, true);
+    else drawEmoji(s.icon, r.x + 12 + col * step, r.y + r.h / 2 - row * 8, 17 * sc, true);
   }
   // sign
   const label = `${s.name} · ${money$(price(s.id))}`;
