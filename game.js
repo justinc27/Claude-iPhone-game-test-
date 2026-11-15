@@ -9,7 +9,7 @@
 const SAVE_KEY = 'pcPartsTycoon_store_v2';
 const W_MAIN = 600, W_FULL = 1000, H = 1020;   // store size; the expansion wing adds x 600..1000
 function worldW() { return state.expanded ? W_FULL : W_MAIN; }
-const VIEW_UNITS = 610;              // how many world units fit across the screen
+const VIEW_UNITS = 488;              // how many world units fit across the screen (zoomed in so the camera follows you)
 const MILESTONES = [10, 25, 50, 100];
 
 // ---------- Store layout ("Racetrack Loop") ----------
@@ -1059,7 +1059,7 @@ function render() {
   const WW = worldW();
   const tx = vw >= WW ? WW / 2 : Math.max(vw / 2, Math.min(WW - vw / 2, state.player.x));
   // The view always reaches up to the road, which shows through the see-through top bar
-  const top = ROAD_Y - 52, bottom = H + 30;
+  const top = ROAD_Y - 52, bottom = H + 110;   // room below the store so you stay clear of the hint banner
   const ty = vh >= bottom - top ? (top + bottom) / 2 : Math.max(top + vh / 2, Math.min(bottom - vh / 2, state.player.y));
   cam.x += (tx - cam.x) * 0.15; cam.y += (ty - cam.y) * 0.15;
   ctx.setTransform(zoom * DPR, 0, 0, zoom * DPR, (cssW / 2 - cam.x * zoom) * DPR, (cssH / 2 - cam.y * zoom) * DPR);
