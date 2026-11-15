@@ -146,6 +146,9 @@ button {
 }
 @keyframes levelFade { 0%, 100% { transform: translate(-50%, 0); opacity: 0; } 14%, 86% { transform: translate(-50%, 0); opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { #levelBanner.show { animation-name: levelFade; } }
+.star-balance { background: #fff8d6; border-radius: 16px; padding: 12px 14px; margin: 12px 0 10px; text-align: left; box-shadow: 0 4px 0 #f1dc8a; }
+.star-balance b { font-size: 22px; color: #6b4200; margin-right: 6px; }
+.star-balance span { display: block; font-size: 12px; color: var(--ink-soft); font-weight: 600; margin-top: 2px; }
 .meter { height: 8px; border-radius: 4px; background: #ece8fb; margin: 4px 0 3px; overflow: hidden; }
 .meter i { display: block; height: 100%; background: linear-gradient(90deg, #7ef0a8, var(--green)); border-radius: 4px; }
 #upgradeBtn .dot {

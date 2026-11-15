@@ -120,6 +120,7 @@ function freshState(keep = {}) {
     restocked: keep.restocked || 0, sold: keep.sold || {},
     stars: keep.stars || 0, starsClaimed: keep.starsClaimed || 0, franchises: keep.franchises || 0,
     achDone: keep.achDone || [], achClaimed: keep.achClaimed || [], daily: keep.daily || null,
+    starPerks: keep.starPerks || {},
     storeName: keep.storeName || 'Byte Depot',
     sound: keep.sound !== undefined ? keep.sound : true,
     haptics: keep.haptics !== undefined ? keep.haptics : true,
@@ -185,7 +186,7 @@ function price(id) {
 }
 function levelCost(id) { return Math.round(SEC[id].price * 12 * Math.pow(1.32, state.sec[id].level - 1)); }
 function shelfCap(id) { return Math.min(20, 6 + 2 * Math.floor((state.sec[id].level - 1) / 5)); }
-function playerSpeed() { return 165 + 20 * state.speedLv; }
+function playerSpeed() { return (165 + 20 * state.speedLv) * (1 + 0.08 * perkLv('quickHands')); }
 function carryCap() { return 4 + 2 * state.carryLv; }
 function speedCost() { return Math.round(80 * Math.pow(2, state.speedLv)); }
 function carryCost() { return Math.round(120 * Math.pow(2.1, state.carryLv)); }
@@ -622,7 +623,9 @@ function updateRegister(dt) {
     front.scanned++;
     sfx.scan();
     if (front.scanned >= front.cart.length) {
-      const total = Math.round(front.cart.reduce((sum, id) => sum + price(id), 0) * eventPriceMult());
+      const lucky = Math.random() < 0.03 * perkLv('luckyCustomers');
+      const total = Math.round(front.cart.reduce((sum, id) => sum + price(id), 0) * eventPriceMult() * (lucky ? 2 : 1));
+      if (lucky) fx.push({ type: 'text', text: '🍀 LUCKY x2', x: REG[l].x, y: REG[l].y - 70, t: 0, life: 1.3, big: true });
       // Cash goes on the counter; if you're the one at the register it goes straight in your pocket
       if (dist(state.player, REG[l]) < REG_RADIUS) earn(total, REG[l].x, REG[l].y - 40);
       else { state.piles[l] += total; rateBucket += total; }
@@ -718,6 +721,46 @@ function starMult() { return 1 + STAR_BONUS * state.stars; }
 function starsEarned() { return Math.floor(5 * Math.sqrt(state.lifetime / 50000)); }
 function claimableStars() { return Math.max(0, starsEarned() - state.starsClaimed); }
 function nextStarAt() { const n = starsEarned() + 1; return Math.ceil(Math.pow(n / 5, 2) * 50000); }
+// ---------- Star Shop: permanent perks bought with Stars ----------
+const HEAD_START = [0, 500, 5000, 50000];
+const NIGHT_SHIFT = [{ rate: 0.5, hours: 2 }, { rate: 0.65, hours: 3 }, { rate: 0.8, hours: 4 }, { rate: 1, hours: 6 }];
+const STAR_PERKS = [
+  { id: 'headStart', icon: '💵', name: 'Head Start', costs: [2, 5, 10], desc: l => `New stores start with ${money$(HEAD_START[l])}` },
+  { id: 'veteranStaff', icon: '👥', name: 'Veteran Staff', costs: [4, 8], desc: l => ['New stores start with no staff', 'New stores start with a cashier hired', 'New stores start with a cashier and a stocker'][l] },
+  { id: 'biggerCrates', icon: '📦', name: 'Bigger Crates', costs: [2, 3, 5, 8], desc: l => `Crates hold +${25 * l}%` },
+  { id: 'expressDelivery', icon: '🚚', name: 'Express Delivery', costs: [2, 4, 6], desc: l => `Trucks arrive ${10 * l}% sooner` },
+  { id: 'quickHands', icon: '👟', name: 'Quick Hands', costs: [1, 2, 3, 5, 8], desc: l => `You walk +${8 * l}% faster and handle boxes +${15 * l}% faster` },
+  { id: 'rushHour', icon: '🎉', name: 'Rush Hour', costs: [3, 5, 8], desc: l => `Rush events +${25 * l}% more often, +${20 * l}% longer` },
+  { id: 'luckyCustomers', icon: '🍀', name: 'Lucky Customers', costs: [2, 3, 5, 8, 12], desc: l => `${3 * l}% of sales pay double` },
+  { id: 'nightShift', icon: '🌙', name: 'Night Shift', costs: [2, 4, 7], desc: l => `Offline: ${Math.round(NIGHT_SHIFT[l].rate * 100)}% earnings for up to ${NIGHT_SHIFT[l].hours}h` },
+];
+const STAR_PERK = Object.fromEntries(STAR_PERKS.map(p => [p.id, p]));
+function perkLv(id) { return (state.starPerks && state.starPerks[id]) || 0; }
+function perkCost(id) { return STAR_PERK[id].costs[perkLv(id)]; }
+function anyPerkAffordable() { return STAR_PERKS.some(p => perkLv(p.id) < p.costs.length && state.stars >= perkCost(p.id)); }
+function showStarShop() {
+  let html = `<div class="sheet-head"><h2>⭐ Star Shop</h2><button class="icon-btn small" data-act="close" aria-label="Close">✕</button></div>
+    <div class="star-balance"><b>${state.stars} ⭐</b> to spend<span>Perks are permanent and stay through every Franchise. Each Star you keep adds +${STAR_BONUS * 100}% to your prices (now x${starMult().toFixed(2)}).</span></div>`;
+  for (const p of STAR_PERKS) {
+    const lv = perkLv(p.id), max = p.costs.length, done = lv >= max;
+    html += `<div class="item"><div class="avatar" style="--c:#fff1b8">${p.icon}</div>
+      <div class="info"><div class="title">${p.name} <small>Lv ${lv}/${max}</small></div>
+      <div class="desc">${lv ? 'Now: ' + p.desc(lv) : 'Not bought yet'}${done ? '' : `<br><b>Next: ${p.desc(lv + 1)}</b>`}</div></div>
+      ${done ? '<button class="btn owned" disabled>MAX</button>' : `<button class="btn ${state.stars >= perkCost(p.id) ? 'green' : 'disabled'}" data-act="starPerk" data-id="${p.id}">Buy<small>${perkCost(p.id)} ⭐</small></button>`}</div>`;
+  }
+  html += `<button class="btn" data-act="backToUpgrades" style="width:100%;margin-top:6px">⬅️ Back to Upgrades</button>`;
+  showModal(html, true);
+}
+function buyPerk(id) {
+  const p = STAR_PERK[id];
+  if (!p || perkLv(id) >= p.costs.length || state.stars < perkCost(id)) return;
+  state.stars -= perkCost(id);
+  state.starPerks[id] = perkLv(id) + 1;
+  if (id === 'expressDelivery') truckTimer = Math.min(truckTimer, truckInterval());
+  sfx.unlock(); confetti();
+  toast(`${p.icon} ${p.name} Lv ${perkLv(id)}!`);
+  save(); showStarShop();
+}
 function franchiseHtml() {
   const gain = claimableStars();
   const next = THEMES[(state.franchises + 1) % THEMES.length];
@@ -725,7 +768,10 @@ function franchiseHtml() {
     <div class="item franchise"><div class="avatar" style="--c:#fff1b8">⭐</div>
       <div class="info"><div class="title">${state.stars} Stars <small>profit x${starMult().toFixed(2)}</small></div>
       <div class="desc">Now: ${theme().name}. Sell it and open a ${next.name} for <b>+${gain} ⭐</b>. Next Star at ${money$(nextStarAt())} lifetime earnings. Resets cash, sections, staff and upgrades.</div></div>
-      <button class="btn ${gain > 0 ? 'green' : 'disabled'}" data-act="franchise">Franchise<small>+${gain} ⭐</small></button></div>`;
+      <button class="btn ${gain > 0 ? 'green' : 'disabled'}" data-act="franchise">Franchise<small>+${gain} ⭐</small></button></div>
+    <div class="item"><div class="avatar" style="--c:#fff1b8">🛒</div>
+      <div class="info"><div class="title">Star Shop</div><div class="desc">Spend Stars on permanent perks that stay through every Franchise</div></div>
+      <button class="btn green" data-act="starShop">Open<small>${state.stars} ⭐</small></button></div>`;
 }
 function doFranchise() {
   const gain = claimableStars();
@@ -734,9 +780,13 @@ function doFranchise() {
     storeName: state.storeName, sound: state.sound, haptics: state.haptics, lifetime: state.lifetime, served: state.served, built: state.built,
     restocked: state.restocked, sold: state.sold, stars: state.stars + gain, starsClaimed: state.starsClaimed + gain,
     franchises: state.franchises + 1, achDone: state.achDone, achClaimed: state.achClaimed, daily: state.daily,
+    starPerks: state.starPerks,
     admin: { ...state.admin, savedMoney: 0 },
   };
   state = freshState(keep);
+  state.money = HEAD_START[perkLv('headStart')];
+  if (perkLv('veteranStaff') >= 1) { state.staff.cashier = true; state.staffPaid.cashier = STAFF.cashier.cost; }
+  if (perkLv('veteranStaff') >= 2) { state.staff.stocker = true; state.staffPaid.stocker = STAFF.stocker.cost; }
   customers = []; queues = [[], []]; fx = []; buildProgress = 0;
   for (const k in npcs) delete npcs[k];
   truck.phase = 'away'; truckTimer = 30; rushEvent = null;
@@ -841,7 +891,7 @@ let rushEvent = null, eventLeft = 0, nextEventIn = 240;
 function updateEvents(dt) {
   if (rushEvent) {
     eventLeft -= dt;
-    if (eventLeft <= 0) { toast(`${rushEvent.icon} ${rushEvent.name.replace('!', '')} is over`); rushEvent = null; nextEventIn = 150 + Math.random() * 120; }
+    if (eventLeft <= 0) { toast(`${rushEvent.icon} ${rushEvent.name.replace('!', '')} is over`); rushEvent = null; nextEventIn = (150 + Math.random() * 120) / (1 + 0.25 * perkLv('rushHour')); }
     return;
   }
   if (!state.sec.mon.unlocked) return;   // rushes start once the store has a few sections
@@ -849,7 +899,7 @@ function updateEvents(dt) {
   if (nextEventIn <= 0) {
     const opts = EVENTS.filter(e => e.ok());
     rushEvent = opts[Math.floor(Math.random() * opts.length)];
-    eventLeft = rushEvent.dur;
+    eventLeft = rushEvent.dur * (1 + 0.2 * perkLv('rushHour'));
     sfx.unlock(); confetti();
     toast(`${rushEvent.icon} ${rushEvent.name} ${rushEvent.desc}`);
   }
@@ -885,7 +935,7 @@ function updatePlayer(dt) {
   for (const s of unlockedParts()) {
     if (!inRect(p, crateRect(s))) continue;
     if (!boxUsable(s.id) && state.carry.includes(s.id)) returning = s;
-    if (pickTimer <= 0.13) continue;
+    if (pickTimer <= 0.13 / (1 + 0.15 * perkLv('quickHands'))) continue;
     if (!boxUsable(s.id)) {
       // shelf is full and no job needs one: after a short wait, boxes of this type go back into the crate
       const i = state.carry.lastIndexOf(s.id);
@@ -913,7 +963,7 @@ function updatePlayer(dt) {
   for (const s of unlockedParts()) {
     const st = state.sec[s.id];
     const i = state.carry.lastIndexOf(s.id);
-    if (i >= 0 && st.stock < shelfCap(s.id) && inRect(p, s.shelf, 34) && dropTimer > 0.1) {
+    if (i >= 0 && st.stock < shelfCap(s.id) && inRect(p, s.shelf, 34) && dropTimer > 0.1 / (1 + 0.15 * perkLv('quickHands'))) {
       state.carry.splice(i, 1); st.stock++; dropTimer = 0; track('restock', s.id, 1);
       shelfPlaced(s, { x: p.x, y: p.y - 60 }, true);
     }
@@ -1015,8 +1065,8 @@ function unlockSection(id) {
 
 // ---------- Delivery truck ----------
 const MAX_STOCKROOM_LV = 6;
-function crateMax() { return 24 + 8 * state.deliveryLv; }
-function truckInterval() { return Math.max(15, 40 - 5 * state.truckLv); }
+function crateMax() { return Math.round((24 + 8 * state.deliveryLv) * (1 + 0.25 * perkLv('biggerCrates'))); }
+function truckInterval() { return Math.round(Math.max(15, 40 - 5 * state.truckLv) * (1 - 0.1 * perkLv('expressDelivery'))); }
 function deliveryCost() { return Math.round(300 * Math.pow(2, state.deliveryLv)); }
 function truckCost() { return Math.round(500 * Math.pow(2, state.truckLv)); }
 const DOCK_X = 300, ROAD_Y = -48;
@@ -2202,6 +2252,7 @@ function anyAffordable() {
   if (state.deliveryLv < MAX_STOCKROOM_LV && state.money >= deliveryCost()) return true;
   if (state.truckLv < MAX_STOCKROOM_LV && state.money >= truckCost()) return true;
   for (const u of STAFF_UPGRADES) if (state.staff[u.staff] && staffLv(u.id) < u.max && state.money >= staffUpCost(u.id)) return true;
+  if (anyPerkAffordable()) return true;
   return false;
 }
 function staffRemaining(k) { return STAFF[k].cost - (state.staffPaid[k] || 0); }
@@ -2344,6 +2395,9 @@ function handleAction(el, act, id) {
       }
       break;
     }
+    case 'starShop': showStarShop(); $('#modalCard').scrollTop = 0; break;
+    case 'starPerk': buyPerk(id); break;
+    case 'backToUpgrades': showUpgrades(); $('#modalCard').scrollTop = 0; break;
     case 'franchise':
       if (claimableStars() > 0) showModal(`<div class="emoji">⭐</div><h2>Open a new store?</h2>
         <p>Sell your ${theme().name} for <b>${claimableStars()} Stars</b> and open a ${THEMES[(state.franchises + 1) % THEMES.length].name}. Every Star adds 5% to all your prices, forever.</p>
@@ -2495,10 +2549,10 @@ function showAdmin() {
 
 // ---------- Offline earnings ----------
 function applyOffline() {
-  const away = Math.min(2 * 3600, (Date.now() - (state.lastSeen || Date.now())) / 1000);
+  const away = Math.min(NIGHT_SHIFT[perkLv('nightShift')].hours * 3600, (Date.now() - (state.lastSeen || Date.now())) / 1000);
   state.lastSeen = Date.now();
   if (away < 30 || !state.staff.cashier || !state.staff.stocker) return;
-  const earned = state.rate * away * 0.5;
+  const earned = state.rate * away * NIGHT_SHIFT[perkLv('nightShift')].rate;
   if (earned < 1) return;
   earn(earned);
   showModal(`
