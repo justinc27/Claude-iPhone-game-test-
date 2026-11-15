@@ -1407,6 +1407,12 @@ function drawStockroom() {
     rr(r.x, r.y, r.w, r.h, 10); ctx.fillStyle = '#c99a4a'; ctx.fill();
     ctx.strokeStyle = '#a77c34'; ctx.lineWidth = 3;
     ctx.beginPath(); ctx.moveTo(r.x + 6, r.y + r.h / 2); ctx.lineTo(r.x + r.w - 6, r.y + r.h / 2); ctx.stroke();
+    // a small piece of tape across the top-left corner in the section's colour
+    ctx.save(); ctx.translate(r.x + 13, r.y + 11); ctx.rotate(-0.6);
+    ctx.beginPath(); ctx.moveTo(-12, -4); ctx.lineTo(12, -4); ctx.lineTo(10.5, -1.5); ctx.lineTo(12, 1); ctx.lineTo(10.5, 4); ctx.lineTo(-12, 4); ctx.lineTo(-10.5, 1.5); ctx.lineTo(-12, -1); ctx.closePath();
+    ctx.fillStyle = s.color; ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,.3)'; ctx.fillRect(-11, -4, 22, 2);
+    ctx.restore();
     const left = state.crates[s.id] || 0;
     if (on && left <= 0) ctx.globalAlpha = 0.45;
     drawEmoji(on ? s.icon : '🔒', s.crate.x, s.crate.y - 4, 24);
