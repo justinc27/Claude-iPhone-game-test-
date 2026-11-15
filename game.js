@@ -324,12 +324,21 @@ function crateRect(s) { return { x: s.crate.x - CRATE_W / 2, y: s.crate.y - CRAT
 function padRect(p, w = 96, h = 56) { return { x: p.x - w / 2, y: p.y - h / 2, w, h }; }
 
 function obstacles() {
-  const list = [...COUNTERS, ...DECOR_RECTS, ...(state.expanded ? DIVIDER_OPEN : [])];
+  const list = [...COUNTERS, ...DECOR_RECTS, ...stockWallRects(), ...(state.expanded ? DIVIDER_OPEN : [])];
   for (const s of PARTS) if (state.sec[s.id].unlocked) list.push(s.shelf);
   if (state.sec.svc.unlocked) list.push(SEC.svc.bench);
   return list;
 }
 let FURNITURE = [];
+// Frosted-glass wall between the stockroom and the store, with sliding-door openings
+const STOCK_WALL_Y = 144, STOCK_WALL_H = 16;
+const STOCK_DOORS = [{ x: 113, w: 70 }, { x: 343, w: 70 }, { x: 713, w: 70, wing: true }];
+const STOCK_WALL_SEGS = [[16, 113], [183, 343], [413, 588]];
+const STOCK_WALL_SEGS_EXPANDED = [[16, 113], [183, 343], [413, 713], [783, 984]];
+function stockWallRects() {
+  return (state.expanded ? STOCK_WALL_SEGS_EXPANDED : STOCK_WALL_SEGS).map(([a, b]) => ({ x: a, y: STOCK_WALL_Y, w: b - a, h: STOCK_WALL_H }));
+}
+function stockDoors() { return STOCK_DOORS.filter(d => !d.wing || state.expanded); }
 // Decorations people walk around
 const DECOR = {
   kiosk: { x: 130, y: 880 },            // demo gaming PC near the entrance
@@ -354,7 +363,7 @@ function segmentBlocked(a, b) {
 const CELL = 20, GW = Math.ceil(W_FULL / CELL), GH = Math.ceil(H / CELL);
 const blockedCell = new Uint8Array(GW * GH);
 function rebuildGrid() {
-  FURNITURE = [...COUNTERS, ...DECOR_RECTS, SEC.svc.bench, ...PARTS.map(s => s.shelf), ...(state.expanded ? DIVIDER_OPEN : DIVIDER_CLOSED)];
+  FURNITURE = [...COUNTERS, ...DECOR_RECTS, ...stockWallRects(), SEC.svc.bench, ...PARTS.map(s => s.shelf), ...(state.expanded ? DIVIDER_OPEN : DIVIDER_CLOSED)];
   const ww = worldW();
   for (let gy = 0; gy < GH; gy++) for (let gx = 0; gx < GW; gx++) {
     const p = { x: gx * CELL + CELL / 2, y: gy * CELL + CELL / 2 };
@@ -1324,6 +1333,41 @@ function drawWalls() {
     ctx.fillStyle = '#2a1f5c'; ctx.fillRect(612, 0, W_FULL - 612, H);
     text('🔒 EXPANSION', 800, 500, 22, '#8f80d6');
   }
+  drawStockWall();
+}
+function drawStockWall() {
+  const Y = STOCK_WALL_Y + 6;
+  for (const r of stockWallRects()) {
+    rr(r.x, Y + 10, r.w, 6, 3); ctx.fillStyle = 'rgba(20,10,50,.12)'; ctx.fill();
+    const g = ctx.createLinearGradient(0, Y - 6, 0, Y + 10);
+    g.addColorStop(0, 'rgba(240,245,255,.85)'); g.addColorStop(1, 'rgba(200,215,240,.75)');
+    rr(r.x, Y - 6, r.w, 16, 3); ctx.fillStyle = g; ctx.fill();
+    ctx.strokeStyle = '#2b2350'; ctx.lineWidth = 2; ctx.stroke();
+  }
+  for (const d of stockDoors()) {
+    // the two sliding door panels, open and tucked beside the doorway
+    for (const [dx, w] of [[-14, 18], [d.w - 4, 18]]) {
+      rr(d.x + dx, Y - 4, w, 12, 2); ctx.fillStyle = 'rgba(160,215,255,.6)'; ctx.fill();
+      ctx.strokeStyle = '#2b2350'; ctx.lineWidth = 1.5; ctx.stroke();
+    }
+    // caution stripe on the floor in the doorway
+    ctx.save(); rr(d.x, Y + 14, d.w, 8, 2); ctx.clip();
+    for (let x = d.x - 10; x < d.x + d.w + 10; x += 12) {
+      ctx.fillStyle = ((x - d.x + 10) / 12 | 0) % 2 ? '#2b2350' : '#ffc83d';
+      ctx.beginPath(); ctx.moveTo(x, Y + 22); ctx.lineTo(x + 6, Y + 14); ctx.lineTo(x + 12, Y + 14); ctx.lineTo(x + 6, Y + 22); ctx.fill();
+    }
+    ctx.restore();
+  }
+}
+// The hint arrow leads through the nearest stockroom doorway when you're on the other side of the glass
+function viaDoor(p, pt) {
+  const top = STOCK_WALL_Y, bot = STOCK_WALL_Y + STOCK_WALL_H;
+  const inside = q => q.y < top, outside = q => q.y > bot;
+  if (!((inside(pt) && outside(p)) || (outside(pt) && inside(p)))) return pt;
+  const doors = stockDoors();
+  if (doors.some(d => p.x > d.x + 12 && p.x < d.x + d.w - 12)) return pt;
+  const d = doors.reduce((a, b) => Math.abs(b.x + b.w / 2 - p.x) < Math.abs(a.x + a.w / 2 - p.x) ? b : a);
+  return { x: d.x + d.w / 2, y: inside(p) ? top - 10 : bot + 14 };
 }
 function drawExpansionPad() {
   if (state.expanded || !state.sec.svc.unlocked) return;
@@ -1867,7 +1911,8 @@ function drawObjective() {
   ctx.beginPath(); ctx.arc(o.pt.x, o.pt.y, 30 + 6 * Math.sin(time * 6), 0, Math.PI * 2);
   ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(255,200,61,.9)'; ctx.stroke();
   if (d < 50) return;
-  const a = Math.atan2(o.pt.y - p.y, o.pt.x - p.x);
+  const aim = viaDoor(p, o.pt);
+  const a = Math.atan2(aim.y - p.y, aim.x - p.x);
   const ax = p.x + Math.cos(a) * 42, ay = p.y - 14 + Math.sin(a) * 42;
   ctx.save(); ctx.translate(ax, ay); ctx.rotate(a);
   ctx.beginPath(); ctx.moveTo(14, 0); ctx.lineTo(-8, -11); ctx.lineTo(-3, 0); ctx.lineTo(-8, 11); ctx.closePath();
@@ -2281,6 +2326,8 @@ function frame(now) {
   requestAnimationFrame(frame);
 }
 
+// a save from before the stockroom wall may have you standing where it is now
+for (const r of stockWallRects()) if (inRect(state.player, r, 12)) state.player.y = STOCK_WALL_Y + STOCK_WALL_H + 20;
 resize();
 cam.x = state.player.x; cam.y = state.player.y;
 applyOffline();
