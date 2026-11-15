@@ -339,6 +339,15 @@ function stockWallRects() {
   return (state.expanded ? STOCK_WALL_SEGS_EXPANDED : STOCK_WALL_SEGS).map(([a, b]) => ({ x: a, y: STOCK_WALL_Y, w: b - a, h: STOCK_WALL_H }));
 }
 function stockDoors() { return STOCK_DOORS.filter(d => !d.wing || state.expanded); }
+// Automatic sliding doors: 0 = shut, 1 = fully open. They open when you or the stocker come near.
+const doorOpen = STOCK_DOORS.map(() => 0);
+function updateDoors(dt) {
+  STOCK_DOORS.forEach((d, i) => {
+    const c = { x: d.x + d.w / 2, y: STOCK_WALL_Y + STOCK_WALL_H / 2 };
+    const near = [state.player, npcs.stocker].some(o => o && Math.abs(o.x - c.x) < d.w / 2 + 30 && Math.abs(o.y - c.y) < 70);
+    doorOpen[i] = Math.max(0, Math.min(1, doorOpen[i] + (near ? 5 : -2.5) * dt));
+  });
+}
 // Decorations people walk around
 const DECOR = {
   kiosk: { x: 130, y: 880 },            // demo gaming PC near the entrance
@@ -1036,6 +1045,7 @@ function update(dt, movePlayer = true) {
   ensureNpcs();
   updateStocker(dt);
   updateTruck(dt);
+  updateDoors(dt);
   updateEvents(dt);
 
   spawnTimer -= dt;
@@ -1345,10 +1355,14 @@ function drawStockWall() {
     ctx.strokeStyle = '#2b2350'; ctx.lineWidth = 2; ctx.stroke();
   }
   for (const d of stockDoors()) {
-    // the two sliding door panels, open and tucked beside the doorway
-    for (const [dx, w] of [[-14, 18], [d.w - 4, 18]]) {
-      rr(d.x + dx, Y - 4, w, 12, 2); ctx.fillStyle = 'rgba(160,215,255,.6)'; ctx.fill();
+    // two glass panels meet in the middle when shut and slide into the wall when open
+    const o = doorOpen[STOCK_DOORS.indexOf(d)], k = o * o * (3 - 2 * o), hw = d.w / 2;
+    for (const side of [-1, 1]) {
+      const x0 = side < 0 ? d.x - k * (hw - 4) : d.x + hw + k * (hw - 4);
+      rr(x0, Y - 4, hw, 12, 2); ctx.fillStyle = 'rgba(160,215,255,.6)'; ctx.fill();
       ctx.strokeStyle = '#2b2350'; ctx.lineWidth = 1.5; ctx.stroke();
+      // handle bar near the meeting edge
+      ctx.fillStyle = 'rgba(43,35,80,.55)'; ctx.fillRect(side < 0 ? x0 + hw - 6 : x0 + 4, Y - 1, 2, 6);
     }
     // caution stripe on the floor in the doorway
     ctx.save(); rr(d.x, Y + 14, d.w, 8, 2); ctx.clip();
