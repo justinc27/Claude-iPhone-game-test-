@@ -21,10 +21,10 @@ Main systems, all in `game.js`:
 - **Staff:** two cashiers, a stocker and a tech, each with upgrades (`STAFF`, `STAFF_UPGRADES`). Staff can be hired on floor pads or in the Upgrades menu.
 - **Stockroom:** stock is limited. A delivery truck refills the crates.
 - **Cash piles:** staff sales stack up on the counters and the bench until the player collects them.
-- **Service Station jobs:** Repair, Upgrade and Full Build (`JOBS`). Upgrades and builds need parts brought to the bench.
+- **Service Station jobs:** Repair, Upgrade and Full Build (`JOBS`). Upgrades and builds need parts: standing in the work circle pulls them from stock (the shelf first, then the stockroom crate), or the player can bring boxes to the bench.
 - **Rush events:** a timed event happens every few minutes (`EVENTS`).
 - **Missions:** daily missions and achievements (`ACHIEVEMENTS`; an achievement gives a Star).
-- **Franchise:** the prestige reset. Stars give +5% to prices, and each new store is a new themed location (`THEMES`).
+- **Franchise:** the prestige reset. It needs all 8 sections open, a Star to claim, and a fee of $2.5M that grows x4 per Franchise (`FRANCHISE_BASE`, `FRANCHISE_GROWTH`, `canFranchise`). Stars give +5% to prices, and each new store is a new themed location (`THEMES`).
 - **Admin tools:** Settings → Admin tools, for testing only (unlimited money, game speed, shortcuts). They must be hidden or removed before an App Store release.
 
 Monetization decided by the owner (not built yet): rewarded ads plus occasional full-screen ads (AdMob), and a $3.99 Remove Ads purchase that also grants rewarded bonuses without watching. See the launch plan.
@@ -84,11 +84,11 @@ Monetization decided by the owner (not built yet): rewarded ads plus occasional 
 - **Font:** Fredoka is bundled in `fonts/` (Latin and Latin Extended subsets, `woff2`) under the SIL Open Font License; keep `fonts/OFL.txt` with it. The game loads no outside files.
 
 - **Preview link:** a single HTML file. `style.css` and `game.js` are copied into the page, the bundled font files in `fonts/` are embedded in the CSS as `data:` URLs (the font preload link is dropped), and the service-worker registration at the end of `game.js` is removed. Previews and the main link each keep their own save.
-- **Service worker:** `sw.js` serves cached files and refreshes them in the background. Change its cache name (currently `pc-tycoon-v3`) when shipping changed files, so the installed app picks them up.
+- **Service worker:** `sw.js` serves cached files and refreshes them in the background. Change its cache name (currently `pc-tycoon-v4`) when shipping changed files, so the installed app picks them up.
 
 ## Where things are
 
 - **Branches:** work happens on `claude/amazing-cerf-3ne0f7`. `main` matches the main game link and is only updated when the owner approves.
 - **Preview (current version):** https://claude.ai/artifact/VCpMSXLkPFAvrSx7KqK6fn
-- **Main game link (same version as the preview since Nov 16, 2026):** https://claude.ai/artifact/Lqefw1KYjppWho31g2y6Tw. Only update it when the owner approves.
+- **Main game link (one version behind the preview: no auto parts or Franchise price yet):** https://claude.ai/artifact/Lqefw1KYjppWho31g2y6Tw. Only update it when the owner approves.
 - **App Store launch plan (tasks marked "once you approve" need the owner's go-ahead):** https://claude.ai/artifact/8k6aLNkRvTT4W5Qehh69A9

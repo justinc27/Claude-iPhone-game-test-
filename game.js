@@ -664,7 +664,9 @@ function jobPay(job) {
   return Math.round((price('svc') * JOBS[job.type].pay + job.parts.reduce((a, id) => a + price(id), 0)) * eventBuildPay());
 }
 function currentJobCustomer() { return customers.find(x => x.state === 'svc' && !x.path.length); }
-let handTimer = 0, techPullTimer = 0;
+let handTimer = 0, techPullTimer = 0, partPullTimer = 0;
+// A part is in stock if its shelf or its stockroom crate has one
+function partInStock(id) { return state.sec[id].stock > 0 || state.crates[id] > 0; }
 function updateService(dt) {
   if (!state.sec.svc.unlocked) return;
   const c = currentJobCustomer();
@@ -678,6 +680,19 @@ function updateService(dt) {
     const idx = state.carry.findIndex(id => missing.includes(id));
     if (idx >= 0) { job.got.push(state.carry[idx]); state.carry.splice(idx, 1); handTimer = 0; sfx.drop(); missing = missingParts(job); }
   }
+  // Standing in the work circle, you pull the parts it needs from stock: the shelf first, then the stockroom
+  const playerHere = dist(p, SEC.svc.workPad) < 34;
+  if (missing.length && playerHere) {
+    partPullTimer += dt;
+    if (partPullTimer > 0.3) {
+      partPullTimer = 0;
+      const id = missing.find(partInStock);
+      if (id) {
+        if (state.sec[id].stock > 0) state.sec[id].stock--; else state.crates[id]--;
+        job.got.push(id); missing = missingParts(job); sfx.drop();
+      }
+    }
+  } else partPullTimer = 0;
   // The tech grabs parts off the shelves
   if (missing.length && state.staff.tech) {
     techPullTimer += dt;
@@ -688,7 +703,6 @@ function updateService(dt) {
     }
   }
   if (missing.length) return;
-  const playerHere = dist(p, SEC.svc.workPad) < 34;
   const t = JOBS[job.type].time;
   const rate = Math.max(playerHere ? 1 / t : 0, state.staff.tech ? 1 / (t * techFactor()) : 0);
   if (!rate) return;
@@ -720,6 +734,17 @@ function theme() { return THEMES[state.franchises % THEMES.length]; }
 function starMult() { return 1 + STAR_BONUS * state.stars; }
 function starsEarned() { return Math.floor(5 * Math.sqrt(state.lifetime / 50000)); }
 function claimableStars() { return Math.max(0, starsEarned() - state.starsClaimed); }
+// Opening a new store is the end goal for each store: every section open, plus a fee that grows x4 each time
+const FRANCHISE_BASE = 2500000, FRANCHISE_GROWTH = 4;
+function franchiseCost() { return FRANCHISE_BASE * Math.pow(FRANCHISE_GROWTH, state.franchises); }
+function allSectionsOpen() { return SECTIONS.every(s => state.sec[s.id].unlocked); }
+function canFranchise() { return claimableStars() > 0 && allSectionsOpen() && state.money >= franchiseCost(); }
+function franchiseBlock() {
+  if (!allSectionsOpen()) return `Unlock all ${SECTIONS.length} sections first (${countUnlocked(SECTIONS.map(s => s.id))}/${SECTIONS.length} open)`;
+  if (claimableStars() <= 0) return `Earn your next Star first (at ${money$(nextStarAt())} lifetime earnings)`;
+  if (state.money < franchiseCost()) return `You need ${money$(franchiseCost())} (you have ${money$(Math.floor(state.money))})`;
+  return '';
+}
 function nextStarAt() { const n = starsEarned() + 1; return Math.ceil(Math.pow(n / 5, 2) * 50000); }
 // ---------- Star Shop: permanent perks bought with Stars ----------
 const HEAD_START = [0, 500, 5000, 50000];
@@ -766,12 +791,12 @@ function franchiseHtml() {
   return `<div class="group">Franchise <span>Start over in a bigger location</span></div>
     <div class="item franchise"><div class="avatar" style="--c:#fff1b8">⭐</div>
       <div class="info"><div class="title">${state.stars} Stars <small>profit x${starMult().toFixed(2)}</small></div>
-      <div class="desc">Now: ${theme().name}. Sell it and open a ${next.name} for <b>+${gain} ⭐</b>. Next Star at ${money$(nextStarAt())} lifetime earnings. Resets cash, sections, staff and upgrades.</div></div>
-      <button class="btn ${gain > 0 ? 'green' : 'disabled'}" data-act="franchise">Franchise<small>+${gain} ⭐</small></button></div>`;
+      <div class="desc">Now: ${theme().name}. Pay <b>${money$(franchiseCost())}</b> and open a ${next.name} for <b>+${gain} ⭐</b>. Needs all ${SECTIONS.length} sections open. Next Star at ${money$(nextStarAt())} lifetime earnings. Resets cash, sections, staff and upgrades.${canFranchise() ? '' : `<br><b>${franchiseBlock()}</b>`}</div></div>
+      <button class="btn ${canFranchise() ? 'green' : 'disabled'}" data-act="franchise">Franchise<small>${money$(franchiseCost())}</small></button></div>`;
 }
 function doFranchise() {
   const gain = claimableStars();
-  if (gain <= 0) return;
+  if (!canFranchise()) return;
   const keep = {
     storeName: state.storeName, sound: state.sound, haptics: state.haptics, lifetime: state.lifetime, served: state.served, built: state.built,
     restocked: state.restocked, sold: state.sold, stars: state.stars + gain, starsClaimed: state.starsClaimed + gain,
@@ -1816,7 +1841,7 @@ function drawService() {
     if (!job.parts.length) text('no parts needed', r.x + 100, r.y + r.h / 2, 9, '#7a2340', 600, 'left');
     rr(r.x + 15, r.y + r.h + 6, 150, 8, 4); ctx.fillStyle = '#ddd6f7'; ctx.fill();
     rr(r.x + 15, r.y + r.h + 6, 150 * buildProgress, 8, 4); ctx.fillStyle = '#ff6b9a'; ctx.fill();
-    if (!here && !state.staff.tech && !missing.length) outlinedText(`${J.name} ready to work on!`, s.workPad.x - 30, s.workPad.y + 34, 12, '#ffc83d');
+    if (!here && !state.staff.tech && missing.every(partInStock)) outlinedText(`${J.name} ready to work on!`, s.workPad.x - 30, s.workPad.y + 34, 12, '#ffc83d');
   }
   drawCashPile(BENCH_PILE, state.benchPile);
 }
@@ -2131,8 +2156,8 @@ function objective() {
     if (missing.length && !state.staff.tech) {
       const carrying = missing.find(id => state.carry.includes(id));
       if (carrying) return { pt: { x: 300, y: 248 }, text: `Bring the ${SEC[carrying].item} to the Service Station` };
-      const need = SEC[missing[0]];
-      if (state.carry.length < carryCap() && state.crates[need.id] > 0) return { pt: need.crate, text: `${J.name} job needs a ${need.item}: grab one from the stockroom` };
+      if (missing.some(partInStock)) { if (dist(p, SEC.svc.workPad) > 34) return { pt: SEC.svc.workPad, text: `A ${J.name.toLowerCase()} is waiting. Stand in the circle and the parts come out of stock` }; }
+      else return { pt: SEC[missing[0]].crate, text: `${J.name} job needs a ${SEC[missing[0]].item}: wait for the next delivery` };
     } else if (!missing.length && !state.staff.tech && dist(p, SEC.svc.workPad) > 34) return { pt: SEC.svc.workPad, text: `A ${J.name.toLowerCase()} is ready. Go work on it!` };
   }
   const next = SECTIONS.find(s => !state.sec[s.id].unlocked);
@@ -2220,7 +2245,7 @@ function updateHud(dt) {
   const hint = $('#hint');
   hint.textContent = currentObjective ? currentObjective.text : '';
   hint.classList.toggle('show', !!currentObjective);
-  $('#upgradeBtn').classList.toggle('alert', anyAffordable() || claimableStars() > 0);
+  $('#upgradeBtn').classList.toggle('alert', anyAffordable() || canFranchise());
   updateMissions();
   $('#missionsBtn').classList.toggle('alert', anyClaimable());
   $('#starCount').textContent = state.stars;
@@ -2395,8 +2420,9 @@ function handleAction(el, act, id) {
     case 'starShop': showStarShop(); $('#modalCard').scrollTop = 0; break;
     case 'starPerk': buyPerk(id); break;
     case 'franchise':
-      if (claimableStars() > 0) showModal(`<div class="emoji">⭐</div><h2>Open a new store?</h2>
-        <p>Sell your ${theme().name} for <b>${claimableStars()} Stars</b> and open a ${THEMES[(state.franchises + 1) % THEMES.length].name}. Every Star adds 5% to all your prices, forever.</p>
+      if (!canFranchise()) { toast(`⭐ ${franchiseBlock()}`); break; }
+      showModal(`<div class="emoji">⭐</div><h2>Open a new store?</h2>
+        <p>Pay <b>${money$(franchiseCost())}</b> to sell your ${theme().name} for <b>${claimableStars()} Stars</b> and open a ${THEMES[(state.franchises + 1) % THEMES.length].name}. Every Star adds 5% to all your prices, forever.</p>
         <p>Your cash, sections, staff and upgrades start over. Stars, achievements and lifetime stats stay.</p>
         <button class="btn green" data-act="confirmFranchise">Franchise!</button><button class="btn disabled" data-act="close">Not yet</button>`);
       break;
