@@ -15,24 +15,26 @@ const MILESTONES = [10, 25, 50, 100];
 // ---------- Store layout ("Racetrack Loop") ----------
 // Stockroom across the top, wall shelves left & right, a center island with
 // two back-to-back shelves, and a one-way loop: in bottom-left, out bottom-right.
+// Crates sit near the back wall so a clear walkway runs in front of them (y 108–144) where nothing gets picked up
+const CRATE_Y = 72;
 const SECTIONS = [
   { id: 'acc', name: 'Accessories', item: 'Mouse', items: 'mice', icon: '🖱️', color: '#4fb3ff', price: 8, unlock: 0,
-    shelf: { x: 26, y: 270, w: 40, h: 330 }, crate: { x: 90, y: 90 }, stockSpot: { x: 94, y: 435 }, pad: { x: 120, y: 435 } },
+    shelf: { x: 26, y: 270, w: 40, h: 330 }, crate: { x: 90, y: CRATE_Y }, stockSpot: { x: 94, y: 435 }, pad: { x: 120, y: 435 } },
   { id: 'case', name: 'PC Cases', item: 'PC Case', items: 'PC cases', icon: '🗄️', color: '#a77bff', price: 25, unlock: 120,
-    shelf: { x: 534, y: 270, w: 40, h: 330 }, crate: { x: 205, y: 90 }, stockSpot: { x: 506, y: 435 }, pad: { x: 478, y: 435 } },
+    shelf: { x: 534, y: 270, w: 40, h: 330 }, crate: { x: 205, y: CRATE_Y }, stockSpot: { x: 506, y: 435 }, pad: { x: 478, y: 435 } },
   { id: 'mon', name: 'Monitors', item: 'Monitor', items: 'monitors', icon: '🖥️', color: '#2ecc8f', price: 60, unlock: 600,
-    shelf: { x: 200, y: 345, w: 200, h: 42 }, crate: { x: 320, y: 90 }, stockSpot: { x: 300, y: 321 }, pad: { x: 300, y: 313 } },
+    shelf: { x: 200, y: 345, w: 200, h: 42 }, crate: { x: 320, y: CRATE_Y }, stockSpot: { x: 300, y: 321 }, pad: { x: 300, y: 313 } },
   { id: 'gpu', name: 'Graphics Cards', item: 'GPU', items: 'GPUs', icon: '🎮', color: '#ff9f43', price: 140, unlock: 2500,
-    shelf: { x: 200, y: 465, w: 200, h: 42 }, crate: { x: 435, y: 90 }, stockSpot: { x: 300, y: 533 }, pad: { x: 300, y: 548 } },
+    shelf: { x: 200, y: 465, w: 200, h: 42 }, crate: { x: 435, y: CRATE_Y }, stockSpot: { x: 300, y: 533 }, pad: { x: 300, y: 548 } },
   { id: 'svc', name: 'Service Station', item: 'Custom PC', items: 'custom PCs', icon: '🛠️', color: '#ff6b9a', price: 400, unlock: 10000,
     bench: { x: 210, y: 200, w: 180, h: 40 }, pad: { x: 300, y: 272 } },
   // ----- Expansion wing -----
   { id: 'cpu', name: 'CPUs', item: 'CPU', items: 'CPUs', icon: '🧠', color: '#3bb5b5', price: 220, unlock: 30000, wing: true,
-    shelf: { x: 660, y: 300, w: 200, h: 42 }, crate: { x: 690, y: 90 }, stockSpot: { x: 760, y: 276 }, pad: { x: 760, y: 372 } },
+    shelf: { x: 660, y: 300, w: 200, h: 42 }, crate: { x: 690, y: CRATE_Y }, stockSpot: { x: 760, y: 276 }, pad: { x: 760, y: 372 } },
   { id: 'ram', name: 'RAM & Storage', item: 'RAM Kit', items: 'RAM kits', icon: '💾', color: '#e05fb0', price: 350, unlock: 75000, wing: true,
-    shelf: { x: 660, y: 470, w: 200, h: 42 }, crate: { x: 805, y: 90 }, stockSpot: { x: 760, y: 446 }, pad: { x: 760, y: 542 } },
+    shelf: { x: 660, y: 470, w: 200, h: 42 }, crate: { x: 805, y: CRATE_Y }, stockSpot: { x: 760, y: 446 }, pad: { x: 760, y: 542 } },
   { id: 'chair', name: 'Gaming Chairs', item: 'Gaming Chair', items: 'gaming chairs', icon: '🪑', color: '#e5484d', price: 600, unlock: 150000, wing: true,
-    shelf: { x: 660, y: 640, w: 200, h: 42 }, crate: { x: 920, y: 90 }, stockSpot: { x: 760, y: 616 }, pad: { x: 760, y: 712 } },
+    shelf: { x: 660, y: 640, w: 200, h: 42 }, crate: { x: 920, y: CRATE_Y }, stockSpot: { x: 760, y: 616 }, pad: { x: 760, y: 712 } },
 ];
 // Knocking down the right wall opens the wing
 const EXPANSION = { cost: 25000, pad: { x: 540, y: 690 } };
@@ -1641,6 +1643,11 @@ function drawStockroom() {
   text('DOCK', DOCK_X, 8, 10, '#1d4e74');
   ctx.fillStyle = 'rgba(120,100,60,.12)';
   for (const [sx, sy, rad] of [[150, 40, 18], [330, 130, 24], [470, 50, 14], [260, 70, 10], [760, 120, 20], [900, 45, 14]]) { ctx.beginPath(); ctx.ellipse(sx, sy, rad, rad * 0.6, 0.4, 0, Math.PI * 2); ctx.fill(); }
+  // the walkway in front of the crates: walk along it to reach a crate without stepping on the others
+  const laneY = CRATE_Y + CRATE_H / 2 + 6, laneH = STOCK_WALL_Y - laneY;
+  ctx.fillStyle = 'rgba(255,255,255,.3)'; ctx.fillRect(16, laneY, W_FULL - 32, laneH);
+  ctx.strokeStyle = 'rgba(255,200,61,.9)'; ctx.lineWidth = 2.5; ctx.setLineDash([12, 9]);
+  ctx.beginPath(); ctx.moveTo(22, laneY); ctx.lineTo(W_FULL - 22, laneY); ctx.stroke(); ctx.setLineDash([]);
   ctx.save(); rr(16, 150, W_FULL - 32, 10, 3); ctx.clip();
   for (let x = 0; x < W_FULL; x += 20) { ctx.fillStyle = (x / 20) % 2 ? '#2b2350' : '#ffc83d'; ctx.beginPath(); ctx.moveTo(x, 160); ctx.lineTo(x + 10, 150); ctx.lineTo(x + 20, 150); ctx.lineTo(x + 10, 160); ctx.fill(); }
   ctx.restore();
