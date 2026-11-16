@@ -90,5 +90,5 @@ Monetization decided by the owner (not built yet): rewarded ads plus occasional 
 
 - **Branches:** work happens on `claude/amazing-cerf-3ne0f7`. `main` matches the main game link and is only updated when the owner approves.
 - **Preview (current version):** https://claude.ai/artifact/VCpMSXLkPFAvrSx7KqK6fn
-- **Main game link (behind the preview: no auto parts, Franchise price or crate walkway yet):** https://claude.ai/artifact/Lqefw1KYjppWho31g2y6Tw. Only update it when the owner approves.
+- **Main game link (same version as the preview since Nov 16, 2026):** https://claude.ai/artifact/Lqefw1KYjppWho31g2y6Tw. Only update it when the owner approves.
 - **App Store launch plan (tasks marked "once you approve" need the owner's go-ahead):** https://claude.ai/artifact/8k6aLNkRvTT4W5Qehh69A9
