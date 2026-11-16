@@ -88,7 +88,7 @@ Monetization decided by the owner (not built yet): rewarded ads plus occasional 
 
 ## Where things are
 
-- **Branch:** `claude/amazing-cerf-3ne0f7`.
+- **Branches:** work happens on `claude/amazing-cerf-3ne0f7`. `main` matches the main game link and is only updated when the owner approves.
 - **Preview (current version):** https://claude.ai/artifact/VCpMSXLkPFAvrSx7KqK6fn
-- **Main game link (last updated Nov 15, 2026 with the bottom-bar layout; the bundled font is only in the preview so far):** https://claude.ai/artifact/Lqefw1KYjppWho31g2y6Tw. Only update it when the owner approves.
+- **Main game link (same version as the preview since Nov 16, 2026):** https://claude.ai/artifact/Lqefw1KYjppWho31g2y6Tw. Only update it when the owner approves.
 - **App Store launch plan (tasks marked "once you approve" need the owner's go-ahead):** https://claude.ai/artifact/8k6aLNkRvTT4W5Qehh69A9
