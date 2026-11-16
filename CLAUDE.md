@@ -70,6 +70,12 @@ Monetization decided by the owner (not built yet): rewarded ads plus occasional 
   - Emoji are pre-drawn and cached (`drawEmoji`).
   - Colours on the canvas are hard-coded, with no theme tokens.
 
+## Ideas for later (not approved to build)
+
+The owner noted these as possible future features. Don't build them without the owner's go-ahead.
+
+- **Sorting tube system:** a buildable tube the player can drop any carried boxes into. The boxes travel through the tubes and get sorted back into their proper stockroom crates, so the player doesn't have to walk each box back to its own crate.
+
 ## Running and testing
 
 - Run it locally: `python3 -m http.server 8000`, then open http://localhost:8000 in the browser's iPhone device mode.
