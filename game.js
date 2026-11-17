@@ -144,7 +144,7 @@ function freshState(keep = {}) {
     crates: Object.fromEntries(SECTIONS.filter(x => x.shelf).map(x => [x.id, 24])),
     deliveryLv: 0, truckLv: 0,
     // late-game Store upgrades and Store goals: these belong to this store and reset on Franchise
-    storeUp: { ads: 0, displays: 0, tools: 0 }, goalsDone: [], goalsClaimed: [], storeServed: 0, storeBuilt: 0,
+    storeUp: { ads: 0, displays: 0, tools: 0 }, decorSeen: null, goalsDone: [], goalsClaimed: [], storeServed: 0, storeBuilt: 0,
     piles: [0, 0], benchPile: 0,
     staff: { cashier: false, cashier2: false, stocker: false, tech: false },
     staffPaid: { cashier: 0, cashier2: 0, stocker: 0 },
@@ -419,7 +419,7 @@ function crateRect(s) { return { x: s.crate.x - CRATE_W / 2, y: s.crate.y - CRAT
 function padRect(p, w = 96, h = 56) { return { x: p.x - w / 2, y: p.y - h / 2, w, h }; }
 
 function obstacles() {
-  const list = [...COUNTERS, ...DECOR_RECTS, ...stockWallRects(), ...(state.expanded ? DIVIDER_OPEN : [])];
+  const list = [...COUNTERS, ...decorRectsOn(), ...stockWallRects(), ...(state.expanded ? DIVIDER_OPEN : [])];
   for (const s of PARTS) if (state.sec[s.id].unlocked) list.push(s.shelf);
   if (state.sec.svc.unlocked) list.push(SEC.svc.bench);
   return list;
@@ -443,17 +443,46 @@ function updateDoors(dt) {
     doorOpen[i] = Math.max(0, Math.min(1, doorOpen[i] + (near ? 5 : -2.5) * dt));
   });
 }
-// Decorations people walk around
-const DECOR = {
-  kiosk: { x: 130, y: 880 },            // demo gaming PC near the entrance
-  standee: { x: 170, y: 548 },          // "NEW GPUs!" stand by the Graphics Cards
-  plants: [{ x: 88, y: 660 }, { x: 196, y: 988 }, { x: 412, y: 988 }, { x: 578, y: 988 }],
-};
-const DECOR_RECTS = [
-  { x: DECOR.kiosk.x - 36, y: DECOR.kiosk.y - 28, w: 72, h: 50 },
-  { x: DECOR.standee.x - 20, y: DECOR.standee.y - 18, w: 40, h: 22 },
-  ...DECOR.plants.map(p => ({ x: p.x - 12, y: p.y - 16, w: 24, h: 20 })),
+// Decorations: a "gamer showroom" set that fills the store as you progress (see DECOR_ITEMS).
+// Each has a spot, a scale, an unlock test and, if people walk around it, a solid footprint.
+const DECOR_ITEMS = [
+  { id: 'planter1', name: 'Modern Planter', x: 88, y: 664, s: 0.8, rect: { x: 76, y: 648, w: 24, h: 22 }, on: () => true },
+  { id: 'planter2', name: 'Modern Planter', x: 196, y: 990, s: 0.8, rect: { x: 184, y: 974, w: 24, h: 22 }, on: () => true },
+  { id: 'planter3', name: 'Modern Planter', x: 412, y: 990, s: 0.8, rect: { x: 400, y: 974, w: 24, h: 22 }, on: () => true },
+  { id: 'planter4', name: 'Modern Planter', x: 578, y: 990, s: 0.8, rect: { x: 566, y: 974, w: 24, h: 22 }, on: () => true },
+  { id: 'showcase', name: 'RGB Showcase PC', x: 130, y: 866, s: 1, rect: { x: 98, y: 860, w: 64, h: 38 }, on: () => state.sec.case.unlocked },
+  { id: 'videowall', name: 'Video Wall', x: 60, y: 196, s: 0.68, rect: { x: 22, y: 168, w: 76, h: 48 }, on: () => state.sec.mon.unlocked },
+  { id: 'thanks', name: '"Thank You!" Neon', x: 300, y: 978, s: 0.8, on: () => state.staff.cashier },
+  { id: 'gpusign', name: 'Giant GPU Display', x: 168, y: 538, s: 0.52, rect: { x: 142, y: 530, w: 52, h: 26 }, on: () => state.sec.gpu.unlocked },
+  { id: 'boxes', name: 'Box Pyramid', x: 545, y: 66, s: 0.85, rect: { x: 505, y: 40, w: 80, h: 56 }, on: () => state.staff.stocker },
+  { id: 'toolwall', name: 'Tool Wall', x: 500, y: 188, s: 0.8, rect: { x: 457, y: 166, w: 86, h: 42 }, on: () => state.sec.svc.unlocked },
+  { id: 'repairsign', name: '"PC Repair" Neon', x: 262, y: 152, s: 0.8, on: () => state.staff.tech },
+  { id: 'arcade', name: 'Arcade Cabinet', x: 955, y: 432, s: 0.9, rect: { x: 935, y: 410, w: 40, h: 54 }, on: () => state.expanded },
+  { id: 'chiprug', name: 'CPU Chip Rug', x: 900, y: 830, s: 0.9, on: () => state.sec.cpu.unlocked },
+  { id: 'simrig', name: 'Racing Sim Rig', x: 780, y: 880, s: 0.9, rect: { x: 735, y: 862, w: 90, h: 34 }, on: () => state.sec.chair.unlocked },
+  { id: 'balloons', name: 'Balloon Arch', x: 105, y: 972, s: 1.15, on: () => storeLv('ads') >= 1 },
+  { id: 'spotlights', name: 'Spotlights', on: () => storeLv('displays') >= 1 },
+  { id: 'trophy', name: 'Trophy Case', x: 900, y: 966, s: 0.85, rect: { x: 861, y: 944, w: 78, h: 44 }, on: () => allSecLv(10) },
 ];
+// pathfinding plans around every decoration's spot; you only bump into the ones that are out
+const DECOR_RECTS = DECOR_ITEMS.filter(d => d.rect).map(d => d.rect);
+function decorOn(d) { try { return !!d.on(); } catch (e) { return false; } }
+function decorRectsOn() { return DECOR_ITEMS.filter(d => d.rect && decorOn(d)).map(d => d.rect); }
+// New decorations pop in with a little celebration (they belong to this store and reset with a Franchise)
+function checkDecor(silent = false) {
+  if (!state.decorSeen) { state.decorSeen = DECOR_ITEMS.filter(decorOn).map(d => d.id); return; }
+  for (const d of DECOR_ITEMS) {
+    if (state.decorSeen.includes(d.id) || !decorOn(d)) continue;
+    state.decorSeen.push(d.id);
+    if (d.rect) pushOut(state.player, d.rect);
+    if (silent) continue;
+    const r = d.rect || { x: (d.x || 300) - 30, y: (d.y || 500) - 20, w: 60, h: 40 };
+    fx.push({ type: 'ring', r, t: 0, life: 0.8 });
+    const cols = ['#ffc83d', '#2ecc71', '#ff5a5f', '#7fd4ff', '#c3a6ff', '#ff8fb1'];
+    for (let i = 0; i < 24; i++) fx.push({ type: 'confetti', x: r.x + r.w / 2, y: r.y, vx: (Math.random() - 0.5) * 240, vy: -120 - Math.random() * 180, spin: (Math.random() - 0.5) * 16, c: cols[i % 6], t: 0, life: 1.4 });
+    toast(`🎨 New decoration: ${d.name}!`);
+  }
+}
 // For shoppers & staff: is a straight walk blocked by furniture?
 function segmentBlocked(a, b) {
   const steps = Math.ceil(dist(a, b) / 8);
@@ -1618,9 +1647,10 @@ function buildFloor() {
   ctx.fillRect(EXIT.x, H - 18, EXIT.w, 18);
   text('ENTRANCE', ENTRANCE.x + ENTRANCE.w / 2, H - 9, 11, '#1d4e74');
   text('EXIT', EXIT.x + EXIT.w / 2, H - 9, 11, '#1d4e74');
-  rr(ENTRANCE.x + 15, H - 66, ENTRANCE.w - 30, 42, 8); ctx.fillStyle = '#5b2bd1'; ctx.fill();
-  ctx.strokeStyle = '#3b1f8f'; ctx.lineWidth = 2; ctx.stroke();
-  text('WELCOME', ENTRANCE.x + ENTRANCE.w / 2, H - 45, 12, '#ffe17a');
+  // welcome mat
+  rr(ENTRANCE.x + 12, H - 68, ENTRANCE.w - 24, 46, 9); ctx.fillStyle = '#3b2a7a'; ctx.fill();
+  rr(ENTRANCE.x + 18, H - 62, ENTRANCE.w - 36, 34, 6); ctx.fillStyle = '#5b3fc0'; ctx.fill();
+  text('WELCOME', ENTRANCE.x + ENTRANCE.w / 2, H - 45, 13, '#ffc83d');
   ctx = main;
   floorCache = c;
 }
@@ -1979,36 +2009,111 @@ function drawPlanks(x0, y0, w, h) {
   ctx.restore();
   rr(x0, y0, w, h, 12); ctx.strokeStyle = 'rgba(110,70,30,.35)'; ctx.lineWidth = 2; ctx.stroke();
 }
-function drawPlant(x, y) {
-  ctx.beginPath(); ctx.ellipse(x, y + 4, 16, 6, 0, 0, Math.PI * 2); ctx.fillStyle = 'rgba(20,10,50,.25)'; ctx.fill();
-  rr(x - 11, y - 14, 22, 18, 5); ctx.fillStyle = '#c96f4a'; ctx.fill(); rr(x - 13, y - 16, 26, 6, 3); ctx.fillStyle = '#e08a63'; ctx.fill();
-  const sway = Math.sin(time * 1.5 + x) * 0.04;
-  for (const [a, l, c] of [[-0.9, 26, '#2f9e5b'], [0.9, 26, '#2f9e5b'], [-0.45, 32, '#3cb371'], [0.45, 32, '#3cb371'], [0, 36, '#4cc77f']]) {
-    ctx.save(); ctx.translate(x, y - 16); ctx.rotate(a + sway); ctx.beginPath(); ctx.ellipse(0, -l / 2, 6, l / 2, 0, 0, Math.PI * 2); ctx.fillStyle = c; ctx.fill(); ctx.restore();
+// ---------- Decorations ("gamer showroom" set) ----------
+const decoHue = o => `hsl(${(time * 60 + o) % 360},95%,60%)`;
+function dRR(x, y, w, h, r, c) { rr(x, y, w, h, r); ctx.fillStyle = c; ctx.fill(); }
+function dShadow(x, y, w, h) { ctx.beginPath(); ctx.ellipse(x, y, w, h, 0, 0, Math.PI * 2); ctx.fillStyle = 'rgba(20,10,50,.22)'; ctx.fill(); }
+// a soft glow: a few see-through circles (cheaper than a blur or a gradient every frame)
+function dGlow(x, y, r, c, a = 0.12) { ctx.fillStyle = c; for (let i = 0; i < 3; i++) { ctx.globalAlpha = a; ctx.beginPath(); ctx.arc(x, y, r * (1 - i * 0.28), 0, Math.PI * 2); ctx.fill(); } ctx.globalAlpha = 1; }
+// a glossy block: top face, darker front face and a shine
+function dBlock(x, y, w, h, d, top, front) { dRR(x, y + d, w, h, 6, front); dRR(x, y, w, h, 6, top); ctx.globalAlpha = 0.35; dRR(x + 3, y + 2, w - 6, 3, 2, '#fff'); ctx.globalAlpha = 1; }
+function dNeon(str, x, y, size, color) {
+  ctx.font = `700 ${size}px Fredoka, ui-rounded, system-ui, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round';
+  ctx.strokeStyle = color; ctx.globalAlpha = 0.25; ctx.lineWidth = size * 0.55; ctx.strokeText(str, x, y);
+  ctx.globalAlpha = 1; ctx.lineWidth = size * 0.16; ctx.strokeText(str, x, y); ctx.fillStyle = '#fff'; ctx.fillText(str, x, y);
+}
+const DECOR_DRAW = {
+  planter() {
+    dShadow(0, 18, 18, 6); dBlock(-13, -4, 26, 18, 6, '#f4f1ff', '#c9c2e8');
+    const sway = Math.sin(time * 1.5) * 0.04;
+    for (const [a, l, c] of [[-0.35, 34, '#2f8f5b'], [0.3, 38, '#3ba86b'], [0, 44, '#2a7d50'], [-0.12, 30, '#47bf7c']]) {
+      ctx.save(); ctx.translate(0, -2); ctx.rotate(a + sway); ctx.beginPath(); ctx.moveTo(-4, 0); ctx.quadraticCurveTo(-6, -l / 2, 0, -l); ctx.quadraticCurveTo(6, -l / 2, 4, 0);
+      ctx.fillStyle = c; ctx.fill(); ctx.strokeStyle = '#d8f2b0'; ctx.lineWidth = 1; ctx.stroke(); ctx.restore();
+    }
+  },
+  showcase() {
+    dShadow(0, 30, 34, 8); dGlow(0, -10, 50, decoHue(0)); dBlock(-30, 8, 60, 16, 8, '#e9e6f6', '#a59bd0');
+    dRR(-18, -40, 36, 50, 5, '#1d1a2b'); ctx.strokeStyle = decoHue(0); ctx.lineWidth = 2; rr(-18, -40, 36, 50, 5); ctx.stroke();
+    for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.arc(0, -30 + i * 14, 5, 0, Math.PI * 2); ctx.strokeStyle = decoHue(i * 60); ctx.lineWidth = 2.5; ctx.stroke(); }
+    ctx.globalAlpha = 0.25; dRR(-22, -44, 44, 58, 6, '#bfe9ff'); ctx.globalAlpha = 0.6; ctx.fillStyle = '#fff'; ctx.fillRect(-18, -42, 3, 50); ctx.globalAlpha = 1;
+  },
+  videowall() {
+    dShadow(0, 34, 54, 7); dGlow(0, -5, 66, decoHue(200), 0.08); dRR(-56, -40, 112, 70, 6, '#141225');
+    for (let i = 0; i < 4; i++) { ctx.fillStyle = decoHue(i * 40); ctx.fillRect(-52 + (i % 2) * 53, -36 + Math.floor(i / 2) * 32, 51, 30); }
+    ctx.globalAlpha = 0.3; ctx.fillStyle = '#fff'; ctx.fillRect(-52, -36, 104, 10); ctx.globalAlpha = 1;
+    text('4K · 240Hz', 0, -4, 15, 'rgba(255,255,255,.9)'); dRR(-8, 30, 16, 6, 2, '#2b2350');
+  },
+  thanks() { dNeon('Thank You!', 0, 0, 20, '#ff4fa3'); },
+  repairsign() { dRR(-56, -13, 112, 26, 8, 'rgba(29,26,43,.85)'); dNeon('PC REPAIR', 0, 1, 15, '#3fd1ff'); },
+  gpusign() {
+    dShadow(0, 34, 44, 7); ctx.strokeStyle = '#6b6390'; ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(-30, 32); ctx.lineTo(-30, 12); ctx.moveTo(30, 32); ctx.lineTo(30, 12); ctx.stroke();
+    dRR(-50, -30, 100, 44, 8, '#2b2a33'); dRR(-50, 10, 100, 6, 3, '#18171f'); ctx.fillStyle = decoHue(30); ctx.fillRect(-46, -30, 92, 3);
+    for (const dx of [-24, 24]) {
+      ctx.beginPath(); ctx.arc(dx, -8, 17, 0, Math.PI * 2); ctx.fillStyle = '#121118'; ctx.fill();
+      ctx.save(); ctx.translate(dx, -8); ctx.rotate(time * 6);
+      for (let k = 0; k < 7; k++) { ctx.rotate(Math.PI * 2 / 7); ctx.beginPath(); ctx.ellipse(7, 0, 8, 3.2, 0.5, 0, Math.PI * 2); ctx.fillStyle = '#4a4860'; ctx.fill(); }
+      ctx.restore(); ctx.beginPath(); ctx.arc(dx, -8, 4, 0, Math.PI * 2); ctx.fillStyle = decoHue(30); ctx.fill();
+    }
+  },
+  boxes() {
+    dShadow(0, 30, 46, 8); const c = ['#c99a4a', '#d6a95a', '#b88a3e'];
+    for (const [dx, dy, i] of [[-30, 10, 0], [0, 10, 1], [30, 10, 2], [-15, -14, 1], [15, -14, 0], [0, -38, 2]]) {
+      dBlock(dx - 14, dy - 6, 28, 18, 6, c[i], '#8a6a2f'); ctx.fillStyle = '#e9d3a6'; ctx.fillRect(dx - 2, dy - 6, 4, 18); ctx.fillStyle = decoHue(i * 90); ctx.fillRect(dx - 10, dy + 13, 20, 3);
+    }
+  },
+  toolwall() {
+    dRR(-54, -34, 108, 62, 6, '#e8d7b8'); ctx.fillStyle = '#c9b48f';
+    for (let i = 0; i < 9; i++) for (let j = 0; j < 5; j++) { ctx.beginPath(); ctx.arc(-46 + i * 11.5, -26 + j * 12, 1.4, 0, Math.PI * 2); ctx.fill(); }
+    ctx.lineCap = 'round'; ctx.strokeStyle = '#ff6b9a'; ctx.lineWidth = 5; ctx.beginPath(); ctx.moveTo(-38, -22); ctx.lineTo(-38, 14); ctx.stroke(); dRR(-44, -26, 12, 8, 2, '#8d8aa0');
+    ctx.strokeStyle = '#3fd1ff'; ctx.beginPath(); ctx.moveTo(-16, -20); ctx.lineTo(-16, 16); ctx.stroke(); ctx.beginPath(); ctx.arc(-16, -22, 5, 0, Math.PI * 2); ctx.strokeStyle = '#8d8aa0'; ctx.lineWidth = 3; ctx.stroke();
+    ctx.strokeStyle = '#ffc83d'; ctx.lineWidth = 5; ctx.beginPath(); ctx.moveTo(6, -20); ctx.lineTo(6, 14); ctx.stroke(); ctx.lineCap = 'butt';
+    dRR(22, -22, 26, 30, 4, '#2b2350'); ctx.fillStyle = '#2ecc71'; ctx.fillRect(26, -18, 18, 10);
+  },
+  arcade() {
+    dShadow(0, 34, 26, 7); dRR(-22, -42, 44, 74, 6, '#5b2bd1'); dRR(-22, -42, 44, 14, 6, decoHue(280)); text('ARCADE', 0, -35, 8, '#fff');
+    dRR(-16, -24, 32, 24, 3, '#0d0b18'); ctx.fillStyle = decoHue(100); ctx.fillRect(-10, -16, 6, 6); ctx.fillStyle = decoHue(220); ctx.fillRect(2, -12, 8, 4); dRR(-20, 2, 40, 10, 3, '#3b1f8f');
+    for (const [bx, by, r, c] of [[-9, 4, 3, '#ff5a5f'], [4, 6, 2.5, '#ffc83d'], [11, 6, 2.5, '#2ecc71']]) { ctx.beginPath(); ctx.arc(bx, by, r, 0, Math.PI * 2); ctx.fillStyle = c; ctx.fill(); }
+  },
+  chiprug() {
+    dRR(-42, -30, 84, 60, 6, '#2f7a6e'); ctx.fillStyle = '#d4b45a'; for (let i = 0; i < 7; i++) { ctx.fillRect(-33 + i * 10.5, -36, 4, 7); ctx.fillRect(-33 + i * 10.5, 29, 4, 7); }
+    dRR(-24, -18, 48, 36, 4, '#3bb5b5'); dRR(-16, -11, 32, 22, 3, '#c7d0db'); text('CPU', 0, 1, 11, '#2b2350');
+  },
+  simrig() {
+    dShadow(0, 30, 46, 8); dRR(-48, 6, 96, 18, 6, '#26242e'); ctx.strokeStyle = '#e5484d'; ctx.lineWidth = 3; rr(-48, 6, 96, 18, 6); ctx.stroke();
+    dRR(10, -26, 30, 40, 10, '#e5484d'); dRR(14, -22, 22, 30, 8, '#b8323a'); dRR(-40, -34, 40, 24, 3, '#141225');
+    ctx.fillStyle = decoHue(160); ctx.fillRect(-38, -32, 36, 20); ctx.beginPath(); ctx.arc(-12, 2, 9, 0, Math.PI * 2); ctx.strokeStyle = '#ddd'; ctx.lineWidth = 3; ctx.stroke();
+  },
+  balloons() {
+    const cols = ['#ff5a5f', '#ffc83d', '#3fd1ff', '#a77bff', '#2ecc71'];
+    for (let i = 0; i <= 12; i++) {
+      const a = Math.PI * (1 - i / 12), bx = Math.cos(a) * 46, by = 26 - Math.sin(a) * 50 + Math.sin(time * 2 + i) * 1.5;
+      ctx.beginPath(); ctx.ellipse(bx, by, 8, 9.5, 0, 0, Math.PI * 2); ctx.fillStyle = cols[i % 5]; ctx.fill();
+      ctx.globalAlpha = 0.5; ctx.beginPath(); ctx.arc(bx - 3, by - 3, 2.5, 0, Math.PI * 2); ctx.fillStyle = '#fff'; ctx.fill(); ctx.globalAlpha = 1;
+    }
+  },
+  trophy() {
+    dShadow(0, 32, 44, 7); dBlock(-46, -30, 92, 54, 8, '#7a4b2a', '#5a3520'); dRR(-40, -26, 80, 44, 4, 'rgba(191,233,255,.55)');
+    for (const [dx, c, s] of [[-24, '#ffc83d', 1], [0, '#ffd966', 1.25], [24, '#c0c4d6', 0.95]]) {
+      ctx.save(); ctx.translate(dx, 2); ctx.scale(s, s); ctx.beginPath(); ctx.moveTo(-8, -16); ctx.lineTo(8, -16); ctx.quadraticCurveTo(8, -2, 0, 0); ctx.quadraticCurveTo(-8, -2, -8, -16);
+      ctx.fillStyle = c; ctx.fill(); ctx.fillRect(-2, 0, 4, 7); ctx.fillRect(-6, 7, 12, 3); ctx.restore();
+    }
+    ctx.globalAlpha = 0.6; ctx.fillStyle = '#fff'; ctx.fillRect(-38, -24, 3, 40); ctx.globalAlpha = 1;
+  },
+};
+// warm light pools on every open shelf, with a lamp above each
+function drawSpotlights() {
+  for (const s of PARTS) {
+    if (!state.sec[s.id].unlocked) continue;
+    const r = s.shelf, horiz = r.w > r.h;
+    for (let i = 0; i < 3; i++) {
+      const x = horiz ? r.x + r.w * (i + 0.5) / 3 : r.x + r.w / 2, y = horiz ? r.y + r.h / 2 : r.y + r.h * (i + 0.5) / 3;
+      ctx.globalAlpha = 0.16 + 0.04 * Math.sin(time * 2 + i); ctx.beginPath(); ctx.ellipse(x, y, horiz ? 30 : 22, horiz ? 20 : 30, 0, 0, Math.PI * 2); ctx.fillStyle = '#fff4b0'; ctx.fill();
+      ctx.globalAlpha = 1; dRR(x - 5, (horiz ? r.y : y) - 12, 10, 6, 3, '#2b2350'); ctx.fillStyle = '#ffe58a'; ctx.fillRect(x - 3, (horiz ? r.y : y) - 7, 6, 2);
+    }
   }
 }
-function drawKiosk(x, y) {
-  rr(x - 40, y - 4, 80, 34, 6); ctx.fillStyle = 'rgba(20,10,50,.18)'; ctx.fill();
-  rr(x - 38, y - 10, 76, 30, 6); ctx.fillStyle = '#3b3550'; ctx.fill(); rr(x - 38, y - 10, 76, 6, 3); ctx.fillStyle = '#5a5276'; ctx.fill();
-  const hue = (time * 60) % 360;
-  rr(x - 26, y - 40, 34, 24, 3); ctx.fillStyle = '#1d1a2b'; ctx.fill();
-  const g = ctx.createLinearGradient(x - 24, y - 38, x + 6, y - 18);
-  g.addColorStop(0, `hsl(${hue},90%,60%)`); g.addColorStop(1, `hsl(${(hue + 120) % 360},90%,55%)`);
-  rr(x - 24, y - 38, 30, 20, 2); ctx.fillStyle = g; ctx.fill();
-  ctx.fillStyle = '#1d1a2b'; ctx.fillRect(x - 11, y - 16, 4, 6);
-  rr(x + 12, y - 40, 20, 32, 3); ctx.fillStyle = '#1d1a2b'; ctx.fill();
-  ctx.save(); ctx.shadowColor = `hsl(${(hue + 200) % 360},100%,60%)`; ctx.shadowBlur = 10;
-  ctx.beginPath(); ctx.arc(x + 22, y - 26, 6, 0, Math.PI * 2); ctx.strokeStyle = `hsl(${(hue + 200) % 360},100%,62%)`; ctx.lineWidth = 2.5; ctx.stroke(); ctx.restore();
-  rr(x - 22, y + 24, 44, 14, 7); ctx.fillStyle = '#ff6b9a'; ctx.fill(); text('TRY ME', x, y + 31, 9, '#fff');
-}
-function drawStandee(x, y) {
-  ctx.beginPath(); ctx.ellipse(x, y + 3, 22, 5, 0, 0, Math.PI * 2); ctx.fillStyle = 'rgba(20,10,50,.22)'; ctx.fill();
-  ctx.strokeStyle = '#8a6a2f'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(x - 12, y); ctx.lineTo(x - 6, y - 16); ctx.moveTo(x + 12, y); ctx.lineTo(x + 6, y - 16); ctx.stroke();
-  rr(x - 30, y - 50, 60, 36, 6); ctx.fillStyle = '#fff'; ctx.fill(); ctx.strokeStyle = '#ff7a1a'; ctx.lineWidth = 3; ctx.stroke();
-  drawEmoji(GPU_ICON, x, y - 39, 16); text('NEW GPUs!', x, y - 23, 9.5, '#ff7a1a');
-}
 function drawDecor() {
-  // RGB light strips along the inside of the walls
+  // RGB light strips along the inside of the walls (always on)
   const hue = (time * 40) % 360, right = worldW() - 18;
   ctx.save(); ctx.lineCap = 'round';
   // glow = a wide faint line under a bright thin one (cheaper than a blur)
@@ -2020,13 +2125,15 @@ function drawDecor() {
   };
   strip(19, 172, 19, 1000, 0); strip(right + 1, 172, right + 1, 1000, 120); strip(180, 1001, 420, 1001, 240);
   ctx.restore();
-  // neon OPEN sign by the doors
-  ctx.save(); ctx.shadowColor = '#ff4fa3'; ctx.shadowBlur = 14 + 4 * Math.sin(time * 3);
-  ctx.font = '700 18px Fredoka, ui-rounded, system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.strokeStyle = '#ff4fa3'; ctx.lineWidth = 2; ctx.strokeText('OPEN', 300, 985); ctx.fillStyle = '#fff'; ctx.fillText('OPEN', 300, 985); ctx.restore();
-  for (const p of DECOR.plants) drawPlant(p.x, p.y);
-  drawKiosk(DECOR.kiosk.x, DECOR.kiosk.y);
-  drawStandee(DECOR.standee.x, DECOR.standee.y);
+  // flat ones first (rugs), then the rest
+  const shown = DECOR_ITEMS.filter(decorOn);
+  for (const flat of [true, false]) for (const d of shown) {
+    if ((d.id === 'chiprug') !== flat) continue;
+    if (d.id === 'spotlights') { drawSpotlights(); continue; }
+    const fn = DECOR_DRAW[d.id.startsWith('planter') ? 'planter' : d.id];
+    if (!fn) continue;
+    ctx.save(); ctx.translate(d.x, d.y); ctx.scale(d.s, d.s); fn(); ctx.restore();
+  }
 }
 function drawHirePads() {
   for (const k in HIRE_PADS) {
@@ -2348,6 +2455,7 @@ function updateHud(dt) {
   hint.classList.toggle('show', !!currentObjective);
   $('#upgradeBtn').classList.toggle('alert', anyAffordable() || canFranchise());
   updateMissions();
+  checkDecor();
   $('#missionsBtn').classList.toggle('alert', anyClaimable());
   $('#starCount').textContent = state.stars;
   $('#starBtn').classList.toggle('alert', anyPerkAffordable());

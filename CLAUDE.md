@@ -22,6 +22,7 @@ Main systems, all in `game.js`:
 - **Stockroom:** stock is limited. A delivery truck refills the crates. Crates sit at `CRATE_Y`, near the back wall, leaving a marked walkway in front of them where nothing is picked up; you pick up by stepping onto a crate.
 - **Cash piles:** staff sales stack up on the counters and the bench until the player collects them.
 - **Service Station jobs:** Repair, Upgrade and Full Build (`JOBS`). Upgrades and builds need parts: standing in the work circle pulls them from stock (the shelf first, then the stockroom crate), or the player can bring boxes to the bench.
+- **Decorations:** a "gamer showroom" set (`DECOR_ITEMS`, drawn by `DECOR_DRAW`). The RGB wall strips, welcome mat and planters are there from the start; the rest appear at milestones (unlocks, hires, expanding, Store upgrades, every section at Lv 10) with a toast and confetti (`checkDecor`, saved in `decorSeen`, reset per store). Solid ones have a `rect`: all rects are in `FURNITURE` for pathfinding, and only the ones that are out block the player (`decorRectsOn`).
 - **Rush events:** a timed event happens every few minutes (`EVENTS`).
 - **Missions:** daily missions and achievements (`ACHIEVEMENTS`; an achievement gives a Star).
 - **Store upgrades and Store goals:** after expanding, the Upgrades menu offers Advertising, Premium Displays and Pro Repair Kits (`STORE_UPGRADES`, 5 levels each). The Missions panel has Store goals with cash rewards (`GOALS`, scaled by `goalReward`). Both are per-store (`storeUp`, `goalsDone`, `goalsClaimed`, `storeServed`, `storeBuilt`) and reset on Franchise.
@@ -96,11 +97,11 @@ The owner noted these as possible future features. Don't build them without the 
 - **Font:** Fredoka is bundled in `fonts/` (Latin and Latin Extended subsets, `woff2`) under the SIL Open Font License; keep `fonts/OFL.txt` with it. The game loads no outside files.
 
 - **Preview link:** a single HTML file. `style.css` and `game.js` are copied into the page, the bundled font files in `fonts/` are embedded in the CSS as `data:` URLs (the font preload link is dropped), and the service-worker registration at the end of `game.js` is removed. Previews and the main link each keep their own save.
-- **Service worker:** `sw.js` serves cached files and refreshes them in the background. Change its cache name (currently `pc-tycoon-v7`) when shipping changed files, so the installed app picks them up.
+- **Service worker:** `sw.js` serves cached files and refreshes them in the background. Change its cache name (currently `pc-tycoon-v8`) when shipping changed files, so the installed app picks them up.
 
 ## Where things are
 
 - **Branches:** work happens on `claude/amazing-cerf-3ne0f7`. `main` matches the main game link and is only updated when the owner approves.
 - **Preview (current version):** https://claude.ai/artifact/VCpMSXLkPFAvrSx7KqK6fn
-- **Main game link (behind the preview: no save protection, pacing changes, Store upgrades or Store goals yet):** https://claude.ai/artifact/Lqefw1KYjppWho31g2y6Tw. Only update it when the owner approves.
+- **Main game link (behind the preview: no save protection, pacing changes, Store upgrades, Store goals or new decorations yet):** https://claude.ai/artifact/Lqefw1KYjppWho31g2y6Tw. Only update it when the owner approves.
 - **App Store launch plan (tasks marked "once you approve" need the owner's go-ahead):** https://claude.ai/artifact/8k6aLNkRvTT4W5Qehh69A9
