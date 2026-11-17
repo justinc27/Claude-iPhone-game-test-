@@ -446,7 +446,7 @@ function updateDoors(dt) {
 // Decorations: a "gamer showroom" set that fills the store as you progress (see DECOR_ITEMS).
 // Each has a spot, a scale, an unlock test and, if people walk around it, a solid footprint.
 const DECOR_ITEMS = [
-  { id: 'planter1', name: 'Modern Planter', x: 66, y: 664, s: 0.8, rect: { x: 54, y: 648, w: 24, h: 22 }, on: () => true },
+  { id: 'planter1', name: 'Modern Planter', x: 46, y: 640, s: 0.8, rect: { x: 34, y: 624, w: 24, h: 22 }, on: () => true },
   { id: 'planter2', name: 'Modern Planter', x: 196, y: 990, s: 0.8, rect: { x: 184, y: 974, w: 24, h: 22 }, on: () => true },
   { id: 'planter3', name: 'Modern Planter', x: 412, y: 990, s: 0.8, rect: { x: 400, y: 974, w: 24, h: 22 }, on: () => true },
   { id: 'planter4', name: 'Modern Planter', x: 578, y: 990, s: 0.8, rect: { x: 566, y: 974, w: 24, h: 22 }, on: () => true },
