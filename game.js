@@ -105,15 +105,25 @@ const STORE_UPGRADES = [
     desc: l => `Service Station jobs pay ${l ? `+${15 * l}%` : 'more'}${l < 5 ? ` → +${15 * (l + 1)}%` : ''}` },
 ];
 const STORE_UP = Object.fromEntries(STORE_UPGRADES.map(u => [u.id, u]));
+// Staff Break Room: built on a pad in the wing's bottom-right corner, then upgraded. Every level makes all staff 5% faster.
+const BREAK_ROOM = { cost: 60000, max: 5, pad: { x: 664, y: 876 }, room: { x: 716, y: 776, w: 268, h: 228 },
+  levels: ['Coffee Bar', 'Comfy Couch', 'Snack Machine', 'Break Table', 'Game Corner'] };
+// its walls, with a doorway on the left; pathfinding always keeps out of the room
+const BREAK_WALLS = [{ x: 710, y: 770, w: 274, h: 14 }, { x: 710, y: 770, w: 14, h: 66 }, { x: 710, y: 916, w: 14, h: 88 }];
+// furniture inside, by the level that adds it
+const BREAK_FURNITURE = [{ lv: 1, x: 900, y: 794, w: 68, h: 40 }, { lv: 2, x: 742, y: 792, w: 116, h: 36 }, { lv: 3, x: 940, y: 848, w: 32, h: 78 }, { lv: 4, x: 806, y: 884, w: 88, h: 32 }];
+function breakLv() { return state.breakRoom || 0; }
+function breakUpCost() { return Math.round(50000 * Math.pow(2, breakLv() - 1)); }
+function staffBoost() { return 1 + 0.05 * breakLv(); }
 function storeLv(id) { return (state.storeUp && state.storeUp[id]) || 0; }
 function storeUpCost(id) { return Math.round(STORE_UP[id].base * Math.pow(2, storeLv(id))); }
 function staffLv(id) { return state.staffLv[id] || 0; }
 function staffUpCost(id) { const u = STAFF_UP[id]; return Math.round(u.base * Math.pow(u.growth, staffLv(id))); }
-function cashierScanTime() { return 0.6 * Math.pow(0.84, staffLv('cashierSpeed')); }
-function stockerSpeed() { return 125 * (1 + 0.18 * staffLv('stockerSpeed')); }
-function stockerHandTime() { return Math.pow(0.85, staffLv('stockerSpeed')); }
+function cashierScanTime() { return 0.6 * Math.pow(0.84, staffLv('cashierSpeed')) / staffBoost(); }
+function stockerSpeed() { return 125 * (1 + 0.18 * staffLv('stockerSpeed')) * staffBoost(); }
+function stockerHandTime() { return Math.pow(0.85, staffLv('stockerSpeed')) / staffBoost(); }
 function stockerCarry() { return 4 + 2 * staffLv('stockerCarry'); }
-function techBuildTime() { return 8 * Math.pow(0.85, staffLv('techSpeed')); }
+function techBuildTime() { return 8 * Math.pow(0.85, staffLv('techSpeed')) / staffBoost(); }
 // How much longer the tech takes than you (2x at first, faster with Power Tools)
 function techFactor() { return techBuildTime() / 4; }
 // Floor pads where you hire staff by standing on them
@@ -144,6 +154,7 @@ function freshState(keep = {}) {
     deliveryLv: 0, truckLv: 0,
     // late-game Store upgrades and Store goals: these belong to this store and reset on Franchise
     storeUp: { ads: 0, displays: 0, tools: 0 }, decorSeen: null, goalsDone: [], goalsClaimed: [], storeServed: 0, storeBuilt: 0,
+    breakRoom: 0, breakPaid: 0,
     piles: [0, 0], benchPile: 0,
     staff: { cashier: false, cashier2: false, stocker: false, tech: false },
     staffPaid: { cashier: 0, cashier2: 0, stocker: 0 },
@@ -420,6 +431,7 @@ function obstacles() {
   const list = [...COUNTERS, ...decorRectsOn(), ...stockWallRects(), ...(state.expanded ? DIVIDER_OPEN : [])];
   for (const s of PARTS) if (state.sec[s.id].unlocked) list.push(s.shelf);
   if (state.sec.svc.unlocked) list.push(SEC.svc.bench);
+  if (breakLv()) { list.push(...BREAK_WALLS); for (const f of BREAK_FURNITURE) if (breakLv() >= f.lv) list.push(f); }
   return list;
 }
 let FURNITURE = [];
@@ -456,11 +468,12 @@ const DECOR_ITEMS = [
   { id: 'toolwall', name: 'Tool Wall', x: 500, y: 188, s: 0.8, rect: { x: 457, y: 166, w: 86, h: 42 }, on: () => state.sec.svc.unlocked },
   { id: 'repairsign', name: '"PC Repair" Neon', x: 262, y: 152, s: 0.8, on: () => state.staff.tech },
   { id: 'arcade', name: 'Arcade Cabinet', x: 955, y: 432, s: 0.9, rect: { x: 935, y: 410, w: 40, h: 54 }, on: () => state.expanded },
-  { id: 'chiprug', name: 'CPU Chip Rug', x: 900, y: 830, s: 0.9, on: () => state.sec.cpu.unlocked },
-  { id: 'simrig', name: 'Racing Sim Rig', x: 780, y: 880, s: 0.9, rect: { x: 735, y: 862, w: 90, h: 34 }, on: () => state.sec.chair.unlocked },
+  // these three live in the Staff Break Room
+  { id: 'chiprug', name: 'CPU Chip Rug', x: 850, y: 900, s: 0.9, on: () => breakLv() >= 4 },
+  { id: 'simrig', name: 'Racing Sim Rig', x: 790, y: 962, s: 0.9, rect: { x: 745, y: 944, w: 90, h: 34 }, on: () => breakLv() >= 5 },
   { id: 'balloons', name: 'Balloon Arch', x: 105, y: 972, s: 1.15, on: () => storeLv('ads') >= 1 },
   { id: 'spotlights', name: 'Spotlights', on: () => storeLv('displays') >= 1 },
-  { id: 'trophy', name: 'Trophy Case', x: 900, y: 966, s: 0.85, rect: { x: 861, y: 944, w: 78, h: 44 }, on: () => allSecLv(10) },
+  { id: 'trophy', name: 'Trophy Case', x: 912, y: 970, s: 0.85, rect: { x: 873, y: 948, w: 78, h: 44 }, on: () => allSecLv(10) && breakLv() >= 1 },
 ];
 // pathfinding plans around every decoration's spot; you only bump into the ones that are out
 const DECOR_RECTS = DECOR_ITEMS.filter(d => d.rect).map(d => d.rect);
@@ -493,7 +506,7 @@ const LAYOUTS = [
     bench: [210, 200, 180, 40], checkout: [300, 440, 770], cashierPad: [222, 900], expansionPad: [540, 690],
     div: [[588, 260, 24, 350], [588, 780, 24, 224]], rug: [208, 581], planks: [236, 736, 350, 268],
     loop: [[105, 1000], [130, 680], [130, 300], [470, 300], [470, 700]],
-    wander: [[160, 255], [440, 255], [230, 426], [300, 426], [370, 426], [130, 450], [470, 450], [200, 630], [300, 610], [420, 640], [250, 700], [160, 800], [920, 300], [920, 560], [760, 800], [700, 210]],
+    wander: [[160, 255], [440, 255], [230, 426], [300, 426], [370, 426], [130, 450], [470, 450], [200, 630], [300, 610], [420, 640], [250, 700], [160, 800], [920, 300], [920, 560], [790, 740], [700, 210]],
     decor: {} },
   { name: 'Twin Aisles',
     shelves: { acc: [26, 270, 40, 330], case: [534, 270, 40, 330], mon: [190, 320, 40, 250], gpu: [370, 320, 40, 250], cpu: [680, 270, 40, 290], ram: [860, 270, 40, 290], chair: [670, 660, 240, 42] },
@@ -502,7 +515,7 @@ const LAYOUTS = [
     bench: [210, 200, 180, 40], checkout: [300, 440, 770], cashierPad: [222, 900], expansionPad: [540, 690],
     div: [[588, 260, 24, 350], [588, 780, 24, 224]], rug: [208, 620], planks: [236, 736, 350, 268],
     loop: [[105, 1000], [120, 640], [120, 250], [300, 250], [300, 600], [480, 600], [480, 250]],
-    decor: { arcade: [955, 760], gpusign: [110, 690] } },
+    decor: { arcade: [955, 712], gpusign: [110, 690] } },
   { name: 'Wall Displays',
     shelves: { acc: [26, 250, 40, 350], case: [534, 250, 40, 350], mon: [130, 320, 340, 42], gpu: [190, 470, 220, 80], cpu: [650, 240, 290, 42], ram: [934, 320, 40, 300], chair: [670, 450, 190, 80] },
     faces: { acc: 'e', case: 'w', mon: 'sn', gpu: 'ns', cpu: 'sn', ram: 'w', chair: 'ns' },
@@ -583,7 +596,7 @@ function applyLayout(t) {
 }
 // Open-floor spots for shoppers to stop and look around: clear of furniture and the checkout lines
 function autoWander(L) {
-  const solid = [...PARTS.map(s => s.shelf), SEC.svc.bench, ...COUNTERS, ...DIVIDER_OPEN, ...DECOR_RECTS];
+  const solid = [...PARTS.map(s => s.shelf), SEC.svc.bench, ...COUNTERS, ...DIVIDER_OPEN, ...DECOR_RECTS, BREAK_ROOM.room];
   const [c0, c1, cy] = L.checkout;
   const out = [];
   for (let y = 210; y <= 900; y += 70) for (let x = 80; x <= 940; x += 70) {
@@ -609,7 +622,7 @@ const CELL = 20, GW = Math.ceil(W_FULL / CELL), GH = Math.ceil(H / CELL);
 const blockedCell = new Uint8Array(GW * GH);
 function rebuildGrid() {
   if (layoutTier() !== appliedLayout) applyLayout(layoutTier());
-  FURNITURE = [...COUNTERS, ...DECOR_RECTS, ...stockWallRects(), SEC.svc.bench, ...PARTS.map(s => s.shelf), ...(state.expanded ? DIVIDER_OPEN : DIVIDER_CLOSED)];
+  FURNITURE = [...COUNTERS, ...DECOR_RECTS, ...stockWallRects(), SEC.svc.bench, ...PARTS.map(s => s.shelf), ...(state.expanded ? DIVIDER_OPEN : DIVIDER_CLOSED), BREAK_ROOM.room];
   const ww = worldW();
   for (let gy = 0; gy < GH; gy++) for (let gx = 0; gx < GW; gx++) {
     const p = { x: gx * CELL + CELL / 2, y: gy * CELL + CELL / 2 };
@@ -1258,6 +1271,13 @@ function updatePlayer(dt) {
     if (Math.random() < dt * 20) fx.push({ type: 'coin', x: p.x, y: p.y - 30, tx: EXPANSION.pad.x, ty: EXPANSION.pad.y, t: 0 });
     if (state.expandPaid >= EXPANSION.cost) expandStore();
   }
+  // Staff Break Room pad
+  if (state.expanded && !breakLv() && inRect(p, padRect(BREAK_ROOM.pad)) && state.money >= 1) {
+    const amt = Math.min(state.money, BREAK_ROOM.cost - state.breakPaid, (state.admin.unlimited ? Infinity : Math.max(1, Math.round(BREAK_ROOM.cost / 1.6 * dt))));
+    state.money -= amt; state.breakPaid += amt;
+    if (Math.random() < dt * 20) fx.push({ type: 'coin', x: p.x, y: p.y - 30, tx: BREAK_ROOM.pad.x, ty: BREAK_ROOM.pad.y, t: 0 });
+    if (state.breakPaid >= BREAK_ROOM.cost) buildBreakRoom();
+  }
   // Hire pads: money flows in while you stand on them
   for (const k in HIRE_PADS) {
     if (state.staff[k] || !staffAvailable(k)) continue;
@@ -1308,6 +1328,23 @@ function expandStore() {
   sfx.unlock(); confetti();
   toast('🧱 The wall is down! A new wing is open to the right');
   save();
+}
+function buildBreakRoom() {
+  state.breakRoom = 1; state.breakPaid = BREAK_ROOM.cost;
+  for (const r of BREAK_WALLS) pushOut(state.player, r);
+  for (const f of BREAK_FURNITURE) pushOut(state.player, f);
+  const r = BREAK_ROOM.room;
+  fx.push({ type: 'ring', r, t: 0, life: 0.8 });
+  sfx.unlock(); confetti();
+  toast('☕ Staff Break Room open! Staff work 5% faster');
+  save();
+}
+function upgradeBreakRoom() {
+  if (!breakLv() || breakLv() >= BREAK_ROOM.max || !spend(breakUpCost())) return;
+  state.breakRoom++;
+  for (const f of BREAK_FURNITURE) if (f.lv === breakLv()) pushOut(state.player, f);
+  sfx.unlock(); confetti();
+  toast(`☕ ${BREAK_ROOM.levels[breakLv() - 1]} added! Staff work ${Math.round((staffBoost() - 1) * 100)}% faster`);
 }
 // Nudge someone out of a piece of furniture (e.g. a shelf that just appeared)
 function pushOut(p, r) {
@@ -1676,12 +1713,16 @@ function render() {
   drawService();
   drawUnlockPads();
   drawExpansionPad();
+  drawBreakPad();
   drawHirePads();
+  drawBreakRoom();
   drawDecor();
+  drawBreakFurniture();
 
   // Characters, sorted by depth
   const people = [...customers.map(c => ({ o: c, kind: 'cust' })), { o: state.player, kind: 'player' }];
   for (const k in npcs) people.push({ o: npcs[k], kind: 'staff' });
+  for (const b of BREAK_LOUNGERS) if (breakLv() >= b.lv) people.push({ o: b, kind: 'staff' });
   people.sort((a, b) => a.o.y - b.o.y);
   for (const p of people) drawPerson(p.o, p.kind);
   for (const c of customers) drawBubble(c);
@@ -1978,6 +2019,65 @@ function drawExpansionPad() {
   ctx.restore();
 }
 
+function drawBreakPad() {
+  if (!state.expanded || breakLv()) return;
+  const R = BREAK_ROOM.room;
+  ctx.setLineDash([8, 6]); ctx.lineWidth = 3; ctx.strokeStyle = '#b8aee0';
+  rr(R.x, R.y, R.w, R.h, 10); ctx.stroke(); ctx.setLineDash([]);
+  text('Staff Break Room', R.x + R.w / 2, R.y + R.h / 2, 15, '#a59bd0');
+  const p = BREAK_ROOM.pad, r = padRect(p), pct = state.breakPaid / BREAK_ROOM.cost;
+  const pulse = state.money >= BREAK_ROOM.cost - state.breakPaid ? 1 + 0.04 * Math.sin(time * 5) : 1;
+  ctx.save();
+  ctx.translate(p.x, p.y); ctx.scale(pulse, pulse); ctx.translate(-p.x, -p.y);
+  rr(r.x, r.y + 5, r.w, r.h, 12); ctx.fillStyle = '#d99a00'; ctx.fill();
+  rr(r.x, r.y, r.w, r.h, 12); ctx.fillStyle = '#ffc83d'; ctx.fill();
+  ctx.save(); rr(r.x, r.y, r.w, r.h, 12); ctx.clip();
+  ctx.fillStyle = '#2ecc71'; ctx.fillRect(r.x, r.y, r.w * pct, r.h); ctx.restore();
+  drawEmoji('☕', r.x + 16, r.y + r.h / 2, 18);
+  text('BREAK ROOM', r.x + r.w / 2 + 10, r.y + 18, 9, '#6b4200');
+  text(money$(Math.ceil(BREAK_ROOM.cost - state.breakPaid)), r.x + r.w / 2 + 10, r.y + 36, 15, '#6b4200');
+  ctx.restore();
+}
+// The room's floor and walls (its decorations are drawn with the others, on top)
+function drawBreakRoom() {
+  const lv = breakLv();
+  if (!lv) return;
+  const T = theme(), R = BREAK_ROOM.room;
+  ctx.save(); rr(R.x, R.y, R.w, R.h, 8); ctx.clip();
+  for (let y = R.y, row = 0; y < R.y + R.h; y += 16, row++) {
+    ctx.fillStyle = row % 2 ? '#c9a27a' : '#d2ad85'; ctx.fillRect(R.x, y, R.w, 16);
+    ctx.fillStyle = 'rgba(110,70,30,.18)'; ctx.fillRect(R.x, y + 15, R.w, 1);
+  }
+  ctx.restore();
+  for (const w of BREAK_WALLS) { softShadow(w, 5); rr(w.x, w.y, w.w, w.h, 5); ctx.fillStyle = T.wall; ctx.fill(); }
+  if (T.trim) { ctx.strokeStyle = T.trim; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(R.x + 8, R.y + 1); ctx.lineTo(R.x + R.w, R.y + 1); ctx.stroke(); }
+  rr(800, R.y - 15, 104, 18, 6); ctx.fillStyle = '#2b2350'; ctx.fill(); text('☕ STAFF ROOM', 852, R.y - 6, 10, '#ffc83d');
+}
+// The furniture in the room, added level by level
+function drawBreakFurniture() {
+  const lv = breakLv();
+  if (!lv) return;
+  dShadow(934, 838, 34, 6); dBlock(900, 794, 68, 34, 6, '#e9e4fb', '#b8aee0');
+  dRR(912, 784, 22, 26, 4, '#2b2350'); dRR(916, 790, 14, 8, 2, '#ff6b6b'); drawEmoji('☕', 948, 804, 14);
+  if (lv >= 2) {
+    dShadow(800, 830, 60, 7); dRR(742, 792, 116, 36, 10, '#5b3fc0'); dRR(748, 806, 104, 20, 8, '#7b5fe0');
+    dRR(742, 792, 14, 36, 6, '#4a2f9e'); dRR(844, 792, 14, 36, 6, '#4a2f9e');
+  }
+  if (lv >= 3) {
+    dShadow(956, 924, 18, 5); dBlock(940, 848, 32, 72, 6, '#ff5a5f', '#c23b40');
+    dRR(944, 856, 20, 44, 3, '#bfe9ff');
+    for (let i = 0; i < 4; i++) for (let j = 0; j < 2; j++) dRR(946 + j * 9, 859 + i * 10, 7, 6, 1, ['#ffc83d', '#2ecc71', '#7fd4ff', '#ff8fb1'][(i + j) % 4]);
+  }
+  if (lv >= 4) {
+    dShadow(850, 912, 30, 6); dBlock(824, 884, 52, 26, 5, '#e9d3b4', '#a88a5c'); drawEmoji('🍕', 840, 893, 12); drawEmoji('🥤', 862, 892, 11);
+    dRR(806, 890, 12, 14, 4, '#4a2f9e'); dRR(882, 890, 12, 14, 4, '#4a2f9e');
+  }
+}
+// Off-duty staff relaxing in the room (more of them as it gets nicer)
+const BREAK_LOUNGERS = [
+  { lv: 2, x: 778, y: 822, face: 1, shirt: '#ffd166', skin: '#f5d0a9', hair: '#b5542b', cap: '#2b2350' },
+  { lv: 4, x: 900, y: 905, face: -1, shirt: '#8338ec', skin: '#e0ac69', hair: '#111', cap: '#ffc83d' },
+];
 function drawStockroom() {
   rr(16, 16, W_FULL - 32, STOCKROOM_H, 10); ctx.fillStyle = '#d9cfa8'; ctx.fill();
   ctx.strokeStyle = '#b9ab78'; ctx.lineWidth = 3;
@@ -2663,6 +2763,8 @@ function objective() {
   if (next && next.wing && !state.expanded) {
     if (state.money >= EXPANSION.cost - state.expandPaid) return { pt: EXPANSION.pad, text: 'Stand on the pad to expand your store' };
   } else if (next && state.money >= next.unlock - state.sec[next.id].paid) return { pt: next.pad, text: `Stand on the pad to unlock ${next.name}` };
+  if (state.expanded && !breakLv() && state.money >= BREAK_ROOM.cost - state.breakPaid && !inRect(p, padRect(BREAK_ROOM.pad)) && Object.values(state.staff).some(Boolean))
+    return { pt: BREAK_ROOM.pad, text: 'Stand on the pad to build a Staff Break Room' };
   for (const k in HIRE_PADS) {
     if (!state.staff[k] && staffAvailable(k) && state.money >= staffRemaining(k) && !inRect(p, padRect(HIRE_PADS[k])))
       return { pt: HIRE_PADS[k], text: k === 'cashier2' ? 'Stand on the pad to hire a second cashier' : `Stand on the pad to hire a ${HIRE_PADS[k].label.toLowerCase()}` };
@@ -2776,6 +2878,7 @@ function anyAffordable() {
   if (state.truckLv < MAX_STOCKROOM_LV && state.money >= truckCost()) return true;
   for (const u of STAFF_UPGRADES) if (state.staff[u.staff] && staffLv(u.id) < u.max && state.money >= staffUpCost(u.id)) return true;
   if (state.expanded) for (const u of STORE_UPGRADES) if (storeLv(u.id) < u.max && state.money >= storeUpCost(u.id)) return true;
+  if (breakLv() && breakLv() < BREAK_ROOM.max && state.money >= breakUpCost()) return true;
   return false;
 }
 function staffRemaining(k) { return STAFF[k].cost - (state.staffPaid[k] || 0); }
@@ -2824,6 +2927,15 @@ function showUpgrades() {
   html += cappedRow('delivery', '📦', 'Bigger Deliveries', `Crates hold ${crateMax()}${state.deliveryLv < MAX_STOCKROOM_LV ? ` → ${crateMax() + 8}` : ''}`, state.deliveryLv, MAX_STOCKROOM_LV, deliveryCost());
   html += cappedRow('truck', '🚚', 'Faster Trucks', `A truck every ${truckInterval()}s${state.truckLv < MAX_STOCKROOM_LV ? ` → ${Math.max(15, truckInterval() - 5)}s` : ''}`, state.truckLv, MAX_STOCKROOM_LV, truckCost());
   html += `<div class="group">Store <span>Big upgrades for a finished store</span></div>`;
+  {
+    const lv = breakLv(), nextName = BREAK_ROOM.levels[lv];
+    const desc = !state.expanded ? 'Expand the store first'
+      : !lv ? `Build it on the pad in the new wing for ${money$(BREAK_ROOM.cost)}. Staff work 5% faster`
+      : `Staff work ${Math.round((staffBoost() - 1) * 100)}% faster${lv < BREAK_ROOM.max ? ` → ${Math.round(staffBoost() * 100 - 95)}% with a ${nextName}` : ''}`;
+    html += `<div class="item ${state.expanded ? '' : 'locked'}"><div class="avatar" style="--c:#fff1d6">${state.expanded ? '☕' : '🔒'}</div>
+      <div class="info"><div class="title">Staff Break Room <small>Lv ${lv}/${BREAK_ROOM.max}</small></div><div class="desc">${desc}</div></div>
+      ${!state.expanded || !lv ? '' : lv >= BREAK_ROOM.max ? '<button class="btn owned" disabled>MAX</button>' : `<button class="btn green" data-act="breakUp" data-cost="${breakUpCost()}">Buy<small>${money$(breakUpCost())}</small></button>`}</div>`;
+  }
   for (const u of STORE_UPGRADES) {
     const lv = storeLv(u.id);
     html += `<div class="item ${state.expanded ? '' : 'locked'}"><div class="avatar" style="--c:#ffe9f2">${state.expanded ? u.icon : '🔒'}</div>
@@ -2944,6 +3056,7 @@ function handleAction(el, act, id) {
       if (state.achDone.includes(id) && !state.achClaimed.includes(id)) { state.achClaimed.push(id); state.stars++; sfx.unlock(); confetti(); toast(`⭐ +1 Star! Profit x${starMult().toFixed(2)}`); showMissions(); }
       break;
     }
+    case 'breakUp': upgradeBreakRoom(); showUpgrades(); break;
     case 'storeUp': {
       const u = STORE_UP[id];
       if (u && state.expanded && storeLv(id) < u.max && spend(storeUpCost(id))) {
