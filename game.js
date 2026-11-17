@@ -1416,7 +1416,7 @@ function truckStatus() {
 function ensureNpcs() {
   if (state.staff.cashier2 && !npcs.cashier2) npcs.cashier2 = { x: REG[0].x + 8, y: REG[0].y, path: [], speed: 0, shirt: '#118ab2', skin: '#8d5524', hair: '#2b1d0e', cap: '#ffc83d', face: 1 };
   if (state.staff.cashier && !npcs.cashier) npcs.cashier = { x: REG[1].x + 8, y: REG[1].y, path: [], speed: 0, shirt: '#2b2350', skin: '#e0ac69', hair: '#111', cap: '#ffc83d', face: 1 };
-  if (state.staff.tech && !npcs.tech) npcs.tech = { x: SEC.svc.bench.x - 24, y: SEC.svc.bench.y + 30, path: [], speed: 0, shirt: '#ff6b9a', skin: '#c68642', hair: '#2b1d0e', cap: '#2b2350', face: 1 };
+  if (state.staff.tech && !npcs.tech) npcs.tech = { x: SEC.svc.bench.x - 52, y: SEC.svc.bench.y + 30, path: [], speed: 0, shirt: '#ff6b9a', skin: '#c68642', hair: '#2b1d0e', cap: '#2b2350', face: 1 };
   if (state.staff.stocker && !npcs.stocker) npcs.stocker = { x: 300, y: 178, path: [], speed: 125, shirt: '#06d6a0', skin: '#f5d0a9', hair: '#b5542b', cap: '#2b2350', carry: [], job: 'idle', timer: 0, face: 1 };
 }
 function updateStocker(dt) {
@@ -2328,10 +2328,7 @@ function drawService() {
   ctx.beginPath(); ctx.arc(s.workPad.x, s.workPad.y, 22, 0, Math.PI * 2);
   ctx.fillStyle = here ? 'rgba(46,204,113,.45)' : 'rgba(255,107,154,.35)'; ctx.fill();
   ctx.setLineDash([6, 5]); ctx.lineWidth = 3; ctx.strokeStyle = here ? '#1e9e55' : '#ff6b9a'; ctx.stroke(); ctx.setLineDash([]);
-  rr(r.x, r.y + 8, r.w, r.h, 10); ctx.fillStyle = '#9a3d5c'; ctx.fill();
-  rr(r.x, r.y, r.w, r.h, 10); ctx.fillStyle = '#ff8fb1'; ctx.fill();
-  rr(r.x + r.w / 2 - 84, r.y - 24, 168, 20, 8); ctx.fillStyle = s.color; ctx.fill();
-  text('Service Station · repairs & builds', r.x + r.w / 2, r.y - 14, 11, '#fff');
+  benchBody(r);
   const c = currentJobCustomer();
   const job = c && c.job;
   if (!job) {
@@ -2345,11 +2342,11 @@ function drawService() {
       ctx.globalAlpha = 0.3 + 0.15 * Math.sin(time * 6);
       rr(r.x - 24, r.y - 24, r.w + 48, r.h + 48, 16); ctx.fillStyle = s.color; ctx.fill();
       ctx.globalAlpha = 1;
-      rr(r.x, r.y, r.w, r.h, 10); ctx.fillStyle = '#ff8fb1'; ctx.fill();
+      benchBody(r);
     }
     drawEmoji(J.icon, r.x + 16, r.y + r.h / 2, 18);
-    text(J.name, r.x + 30, r.y + 12, 10, '#7a2340', 700, 'left');
-    text(money$(jobPay(job)), r.x + 30, r.y + 28, 11, '#1e7a45', 700, 'left');
+    text(J.name, r.x + 30, r.y + 12, 10, '#2b2350', 700, 'left');
+    text(money$(jobPay(job)), r.x + 30, r.y + 28, 11, '#0f5530', 700, 'left');
     // part slots
     const got = [...job.got];
     job.parts.forEach((id, i) => {
@@ -2360,12 +2357,51 @@ function drawService() {
       ctx.globalAlpha = have ? 1 : 0.4; drawEmoji(SEC[id].icon, x, y, 13); ctx.globalAlpha = 1;
       if (have) text('✓', x + 8, y - 8, 10, '#1e9e55');
     });
-    if (!job.parts.length) text('no parts needed', r.x + 100, r.y + r.h / 2, 9, '#7a2340', 600, 'left');
+    if (!job.parts.length) text('no parts needed', r.x + 100, r.y + r.h / 2, 9, '#2b2350', 600, 'left');
     rr(r.x + 15, r.y + r.h + 6, 150, 8, 4); ctx.fillStyle = '#ddd6f7'; ctx.fill();
     rr(r.x + 15, r.y + r.h + 6, 150 * buildProgress, 8, 4); ctx.fillStyle = '#ff6b9a'; ctx.fill();
     if (!here && !state.staff.tech && missing.every(partInStock)) outlinedText(`${J.name} ready to work on!`, s.workPad.x - 30, s.workPad.y + 34, 12, '#ffc83d');
   }
+  benchGear(r, st.level);
+  // the sign goes last so the lamp sits behind it
+  rr(r.x + r.w / 2 - 84, r.y - 24, 168, 20, 8); ctx.fillStyle = s.color; ctx.fill();
+  text('Service Station · repairs & builds', r.x + r.w / 2, r.y - 14, 11, '#fff');
   drawCashPile(BENCH_PILE, state.benchPile);
+}
+// The Service Station's workbench: a charcoal frame with a light grey top (black with the neon edge in the Flagship),
+// plus an anti-static mat from Lv 10
+function benchBody(r) {
+  const T = theme(), flagship = T.counter === 'black';
+  rr(r.x, r.y + 8, r.w, r.h, 9); ctx.fillStyle = flagship ? '#07060c' : '#14121c'; ctx.fill();
+  rr(r.x, r.y, r.w, r.h, 9); ctx.fillStyle = flagship ? '#211d33' : '#2a2738'; ctx.fill();
+  if (flagship) {
+    for (const [w, a] of [[6, 0.2], [3, 0.45]]) { rr(r.x, r.y, r.w, r.h, 9); ctx.globalAlpha = a; ctx.strokeStyle = T.trim; ctx.lineWidth = w; ctx.stroke(); }
+    ctx.globalAlpha = 1; rr(r.x, r.y, r.w, r.h, 9); ctx.strokeStyle = '#fff'; ctx.lineWidth = 1; ctx.stroke();
+  }
+  rr(r.x + 4, r.y + 4, r.w - 8, r.h - 8, 6); ctx.fillStyle = '#c3c7cf'; ctx.fill();
+  if (state.sec.svc.level >= 10) {
+    rr(r.x + 6, r.y + 5, r.w - 12, r.h - 10, 4); ctx.fillStyle = '#b0b5be'; ctx.fill();
+    ctx.strokeStyle = 'rgba(60,65,80,.18)'; ctx.lineWidth = 1; ctx.beginPath();
+    for (let x = r.x + 16; x < r.x + r.w - 6; x += 10) { ctx.moveTo(x, r.y + 5); ctx.lineTo(x, r.y + r.h - 5); }
+    ctx.stroke();
+    ctx.fillStyle = '#ffc83d'; ctx.fillRect(r.x + 8, r.y + r.h - 10, 4, 4);   // ground-strap clip
+  }
+}
+// Gear the bench gains at the Service Station's milestones: a magnifier lamp (Lv 50) and a test-bench PC (Lv 100)
+function benchGear(r, lv) {
+  if (lv >= 50) {
+    ctx.globalAlpha = 0.22; ctx.beginPath(); ctx.ellipse(r.x + r.w - 52, r.y + 20, 30, 14, 0, 0, Math.PI * 2); ctx.fillStyle = '#fff4b0'; ctx.fill(); ctx.globalAlpha = 1;
+    dRR(r.x + r.w - 16, r.y + 26, 12, 8, 3, '#2b2350');
+    ctx.strokeStyle = '#2b2350'; ctx.lineWidth = 3; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(r.x + r.w - 10, r.y + 28); ctx.lineTo(r.x + r.w - 18, r.y - 14); ctx.lineTo(r.x + r.w - 44, r.y - 4); ctx.stroke(); ctx.lineCap = 'butt';
+    ctx.beginPath(); ctx.ellipse(r.x + r.w - 48, r.y - 2, 9, 6, 0, 0, Math.PI * 2); ctx.fillStyle = '#bfe9ff'; ctx.fill(); ctx.strokeStyle = '#2b2350'; ctx.lineWidth = 2; ctx.stroke();
+  }
+  if (lv >= 100) {
+    const tx = r.x - 30, ty = r.y - 4, hue = (time * 60) % 360;
+    dShadow(tx + 11, ty + 46, 14, 4); dBlock(tx, ty, 22, 42, 5, '#2b2d3a', '#14151d');
+    rr(tx + 3, ty + 4, 16, 34, 3); ctx.fillStyle = 'rgba(140,190,255,.25)'; ctx.fill();
+    for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.arc(tx + 11, ty + 10 + i * 11, 4.5, 0, Math.PI * 2); ctx.strokeStyle = `hsl(${(hue + i * 60) % 360},100%,62%)`; ctx.lineWidth = 2; ctx.stroke(); }
+  }
 }
 
 function drawUnlockPads() {
