@@ -11,6 +11,7 @@ const W_MAIN = 600, W_FULL = 1000, H = 1020;   // store size; the expansion wing
 function worldW() { return state.expanded ? W_FULL : W_MAIN; }
 const VIEW_UNITS = 488;              // how many world units fit across the screen (zoomed in so the camera follows you)
 const MILESTONES = [10, 25, 50, 100];
+const MAX_STOCKROOM_LV = 6;
 
 // ---------- Store layout ("Racetrack Loop") ----------
 // Stockroom across the top, wall shelves left & right, a center island with
@@ -24,7 +25,7 @@ const SECTIONS = [
     shelf: { x: 534, y: 270, w: 40, h: 330 }, crate: { x: 205, y: CRATE_Y }, stockSpot: { x: 506, y: 435 }, pad: { x: 478, y: 435 } },
   { id: 'mon', name: 'Monitors', item: 'Monitor', items: 'monitors', icon: '🖥️', color: '#2ecc8f', price: 60, unlock: 600,
     shelf: { x: 200, y: 345, w: 200, h: 42 }, crate: { x: 320, y: CRATE_Y }, stockSpot: { x: 300, y: 321 }, pad: { x: 300, y: 313 } },
-  { id: 'gpu', name: 'Graphics Cards', item: 'GPU', items: 'GPUs', icon: '🎮', color: '#ff9f43', price: 140, unlock: 2500,
+  { id: 'gpu', name: 'Graphics Cards', item: 'GPU', items: 'GPUs', icon: '🎮', color: '#ff9f43', price: 140, unlock: 1500,
     shelf: { x: 200, y: 465, w: 200, h: 42 }, crate: { x: 435, y: CRATE_Y }, stockSpot: { x: 300, y: 533 }, pad: { x: 300, y: 548 } },
   { id: 'svc', name: 'Service Station', item: 'Custom PC', items: 'custom PCs', icon: '🛠️', color: '#ff6b9a', price: 400, unlock: 10000,
     bench: { x: 210, y: 200, w: 180, h: 40 }, pad: { x: 300, y: 272 } },
@@ -95,6 +96,18 @@ const STAFF_UPGRADES = [
     desc: () => `Repairs in ${(3 * techFactor()).toFixed(1)}s, full builds in ${(6 * techFactor()).toFixed(1)}s` },
 ];
 const STAFF_UP = Object.fromEntries(STAFF_UPGRADES.map(u => [u.id, u]));
+// Store upgrades: big late-game purchases, available once the store is expanded
+const STORE_UPGRADES = [
+  { id: 'ads', icon: '📣', title: 'Advertising', base: 40000, max: 5,
+    desc: l => `Up to ${10 + l} shoppers at once${l ? `, arriving ${10 * l}% faster` : ''}${l < 5 ? ` → ${11 + l}, ${10 * (l + 1)}% faster` : ''}` },
+  { id: 'displays', icon: '✨', title: 'Premium Displays', base: 60000, max: 5,
+    desc: l => `${l ? `Every price +${6 * l}%` : 'Raise every price'}${l < 5 ? ` → +${6 * (l + 1)}%` : ''}` },
+  { id: 'tools', icon: '🧰', title: 'Pro Repair Kits', base: 30000, max: 5,
+    desc: l => `Service Station jobs pay ${l ? `+${15 * l}%` : 'more'}${l < 5 ? ` → +${15 * (l + 1)}%` : ''}` },
+];
+const STORE_UP = Object.fromEntries(STORE_UPGRADES.map(u => [u.id, u]));
+function storeLv(id) { return (state.storeUp && state.storeUp[id]) || 0; }
+function storeUpCost(id) { return Math.round(STORE_UP[id].base * Math.pow(2, storeLv(id))); }
 function staffLv(id) { return state.staffLv[id] || 0; }
 function staffUpCost(id) { const u = STAFF_UP[id]; return Math.round(u.base * Math.pow(u.growth, staffLv(id))); }
 function cashierScanTime() { return 0.6 * Math.pow(0.84, staffLv('cashierSpeed')); }
@@ -130,6 +143,8 @@ function freshState(keep = {}) {
     expanded: false, expandPaid: 0,
     crates: Object.fromEntries(SECTIONS.filter(x => x.shelf).map(x => [x.id, 24])),
     deliveryLv: 0, truckLv: 0,
+    // late-game Store upgrades and Store goals: these belong to this store and reset on Franchise
+    storeUp: { ads: 0, displays: 0, tools: 0 }, goalsDone: [], goalsClaimed: [], storeServed: 0, storeBuilt: 0,
     piles: [0, 0], benchPile: 0,
     staff: { cashier: false, cashier2: false, stocker: false, tech: false },
     staffPaid: { cashier: 0, cashier2: 0, stocker: 0 },
@@ -173,6 +188,7 @@ function mergeSave(s) {
   merged.staffLv = Object.assign({}, s.staffLv || {});
   merged.crates = Object.assign(base0.crates, s.crates || {});
   merged.piles = Array.isArray(s.piles) ? s.piles : [0, 0];
+  merged.storeUp = Object.assign({ ads: 0, displays: 0, tools: 0 }, s.storeUp || {});
   return merged;
 }
 function load() {
@@ -232,7 +248,7 @@ const npcs = {};
 // ---------- Economy ----------
 function price(id) {
   const L = state.sec[id].level;
-  return Math.round(SEC[id].price * (1 + 0.25 * (L - 1)) * Math.pow(2, MILESTONES.filter(m => L >= m).length) * starMult());
+  return Math.round(SEC[id].price * (1 + 0.25 * (L - 1)) * Math.pow(2, MILESTONES.filter(m => L >= m).length) * starMult() * (1 + 0.06 * storeLv('displays')));
 }
 function levelCost(id) { return Math.round(SEC[id].price * 12 * Math.pow(1.32, state.sec[id].level - 1)); }
 function shelfCap(id) { return Math.min(20, 6 + 2 * Math.floor((state.sec[id].level - 1) / 5)); }
@@ -682,7 +698,7 @@ function updateRegister(dt) {
       track('serve', null, 1);
       for (const id of front.cart) track('sell', id, 1);
       sfx.cash();
-      state.served++;
+      state.served++; state.storeServed++;
       queues[l].shift();
       leave(front, 'happy');
     }
@@ -711,7 +727,7 @@ function missingParts(job) {
   return need;
 }
 function jobPay(job) {
-  return Math.round((price('svc') * JOBS[job.type].pay + job.parts.reduce((a, id) => a + price(id), 0)) * eventBuildPay());
+  return Math.round((price('svc') * JOBS[job.type].pay + job.parts.reduce((a, id) => a + price(id), 0)) * eventBuildPay() * (1 + 0.15 * storeLv('tools')));
 }
 function currentJobCustomer() { return customers.find(x => x.state === 'svc' && !x.path.length); }
 let handTimer = 0, techPullTimer = 0, partPullTimer = 0;
@@ -760,7 +776,7 @@ function updateService(dt) {
   if (Math.random() < dt * 6) fx.push({ type: 'spark', x: SEC.svc.bench.x + 30 + Math.random() * 120, y: SEC.svc.bench.y + 10, t: 0 });
   if (buildProgress >= 1) {
     buildProgress = 0;
-    state.built++;
+    state.built++; state.storeBuilt++;
     const pay = jobPay(job);
     if (playerHere) earn(pay, SEC.svc.custSpot.x, SEC.svc.custSpot.y - 40);
     else { state.benchPile += pay; rateBucket += pay; }
@@ -785,7 +801,7 @@ function starMult() { return 1 + STAR_BONUS * state.stars; }
 function starsEarned() { return Math.floor(5 * Math.sqrt(state.lifetime / 50000)); }
 function claimableStars() { return Math.max(0, starsEarned() - state.starsClaimed); }
 // Opening a new store is the end goal for each store: every section open, plus a fee that grows x4 each time
-const FRANCHISE_BASE = 2500000, FRANCHISE_GROWTH = 4;
+const FRANCHISE_BASE = 1500000, FRANCHISE_GROWTH = 4;
 function franchiseCost() { return FRANCHISE_BASE * Math.pow(FRANCHISE_GROWTH, state.franchises); }
 function allSectionsOpen() { return SECTIONS.every(s => state.sec[s.id].unlocked); }
 function canFranchise() { return claimableStars() > 0 && allSectionsOpen() && state.money >= franchiseCost(); }
@@ -916,16 +932,37 @@ const ACHIEVEMENTS = [
   { id: 'earn1m', icon: '🤑', name: 'Millionaire', desc: 'Earn $1M in total', goal: 1e6, value: () => state.lifetime },
   { id: 'earn10m', icon: '💎', name: 'Tycoon', desc: 'Earn $10M in total', goal: 1e7, value: () => state.lifetime },
   { id: 'franchise1', icon: '⭐', name: 'Franchise Owner', desc: 'Open a second store', goal: 1, value: () => state.franchises },
+  { id: 'shelf25', icon: '🏷️', name: 'Shelf Master', desc: 'Get a section to Lv 25', goal: 25, value: () => Math.max(...SECTIONS.map(s => state.sec[s.id].level)) },
+  { id: 'earn100m', icon: '🏦', name: 'Mogul', desc: 'Earn $100M in total', goal: 1e8, value: () => state.lifetime },
+  { id: 'franchise3', icon: '🌟', name: 'Store Chain', desc: 'Open 3 new stores', goal: 3, value: () => state.franchises },
 ];
+// Store goals: cash rewards for finishing up a store; they reset with each Franchise and pay more in later stores
+const allSecLv = n => SECTIONS.every(s => state.sec[s.id].unlocked && state.sec[s.id].level >= n);
+const GOALS = [
+  { id: 'lv10', icon: '📈', name: 'Every section open and at Lv 10', reward: 20000, goal: 8, value: () => SECTIONS.filter(s => state.sec[s.id].unlocked && state.sec[s.id].level >= 10).length },
+  { id: 'serve1000', icon: '🛒', name: 'Check out 1,000 shoppers in this store', reward: 40000, goal: 1000, value: () => state.storeServed },
+  { id: 'stockMax', icon: '🚚', name: 'Max out both Stockroom upgrades', reward: 50000, goal: 2 * MAX_STOCKROOM_LV, value: () => state.deliveryLv + state.truckLv },
+  { id: 'build100', icon: '🛠️', name: 'Finish 100 Service jobs in this store', reward: 60000, goal: 100, value: () => state.storeBuilt },
+  { id: 'staffMax', icon: '👥', name: 'Max out every staff upgrade', reward: 100000, goal: STAFF_UPGRADES.reduce((a, u) => a + u.max, 0), value: () => STAFF_UPGRADES.reduce((a, u) => a + staffLv(u.id), 0) },
+  { id: 'lv20', icon: '🚀', name: 'Every section at Lv 20', reward: 150000, goal: 8, value: () => SECTIONS.filter(s => state.sec[s.id].unlocked && state.sec[s.id].level >= 20).length },
+  { id: 'storeMax', icon: '🏆', name: 'Max out every Store upgrade', reward: 250000, goal: STORE_UPGRADES.reduce((a, u) => a + u.max, 0), value: () => STORE_UPGRADES.reduce((a, u) => a + storeLv(u.id), 0) },
+];
+const GOAL = Object.fromEntries(GOALS.map(x => [x.id, x]));
+function goalReward(gl) { return gl.reward * (1 + state.franchises); }
 function updateMissions() {
   if (!state.daily || state.daily.day !== todayKey()) makeDaily();
   for (const a of ACHIEVEMENTS) if (!state.achDone.includes(a.id) && a.value() >= a.goal) {
     state.achDone.push(a.id);
     toast(`🏆 Achievement: ${a.name}! Claim your ⭐ in Missions`);
   }
+  for (const gl of GOALS) if (!state.goalsDone.includes(gl.id) && gl.value() >= gl.goal) {
+    state.goalsDone.push(gl.id);
+    toast(`🎯 Store goal done: claim ${money$(goalReward(gl))} in Missions`);
+  }
 }
 function anyClaimable() {
   if (state.daily && state.daily.list.some(m => !m.claimed && m.progress >= m.target)) return true;
+  if (state.goalsDone.some(id => !state.goalsClaimed.includes(id))) return true;
   return state.achDone.some(id => !state.achClaimed.includes(id));
 }
 function showMissions() {
@@ -940,6 +977,16 @@ function showMissions() {
       <div class="desc">${m.kind === 'earn' ? money$(m.progress) + ' / ' + money$(m.target) : m.progress + ' / ' + m.target} · reward ${money$(m.reward)}</div></div>
       ${m.claimed ? '<button class="btn owned" disabled>Done ✓</button>' : `<button class="btn ${done ? 'green' : 'disabled'}" data-act="claimDaily" data-id="${i}">Claim<small>${money$(m.reward)}</small></button>`}</div>`;
   });
+  html += `<div class="group">Store goals <span>Cash rewards for this store</span></div>`;
+  for (const gl of GOALS) {
+    const done = state.goalsDone.includes(gl.id), claimed = state.goalsClaimed.includes(gl.id);
+    const v = Math.min(gl.goal, gl.value()), r = goalReward(gl);
+    html += `<div class="item ${claimed ? 'done' : ''}"><div class="avatar" style="--c:${done ? '#dff7e8' : '#ece8fb'}">${gl.icon}</div>
+      <div class="info"><div class="title">${gl.name}</div>
+      ${done ? '' : `<div class="meter"><i style="width:${Math.round(100 * v / gl.goal)}%"></i></div>`}
+      <div class="desc">${done ? '' : `${v} / ${gl.goal} · `}reward ${money$(r)}</div></div>
+      ${claimed ? '<button class="btn owned" disabled>Done ✓</button>' : `<button class="btn ${done ? 'green' : 'disabled'}" data-act="claimGoal" data-id="${gl.id}">Claim<small>${money$(r)}</small></button>`}</div>`;
+  }
   html += `<div class="group">Achievements <span>Each one is worth a ⭐ Star</span></div>`;
   for (const a of ACHIEVEMENTS) {
     const done = state.achDone.includes(a.id), claimed = state.achClaimed.includes(a.id);
@@ -1135,7 +1182,6 @@ function unlockSection(id) {
 }
 
 // ---------- Delivery truck ----------
-const MAX_STOCKROOM_LV = 6;
 function crateMax() { return Math.round((24 + 8 * state.deliveryLv) * (1 + 0.25 * perkLv('biggerCrates'))); }
 function truckInterval() { return Math.round(Math.max(15, 40 - 5 * state.truckLv) * (1 - 0.1 * perkLv('expressDelivery'))); }
 function deliveryCost() { return Math.round(300 * Math.pow(2, state.deliveryLv)); }
@@ -1232,10 +1278,10 @@ function update(dt, movePlayer = true) {
   updateEvents(dt);
 
   spawnTimer -= dt;
-  const maxShoppers = Math.min(rushEvent ? 16 : 10, 2 + unlockedParts().length * 2 + (rushEvent ? 6 : 0));
+  const maxShoppers = Math.min((rushEvent ? 16 : 10) + storeLv('ads'), 2 + unlockedParts().length * 2 + (rushEvent ? 6 : 0) + storeLv('ads'));
   if (spawnTimer <= 0) {
     if (customers.length < maxShoppers) spawnCustomer();
-    spawnTimer = Math.max(1.4, 4.5 - 0.7 * (unlockedParts().length - 1)) * (0.7 + Math.random() * 0.6) / ((rushEvent && rushEvent.spawn) || 1);
+    spawnTimer = Math.max(1.4, 4.5 - 0.7 * (unlockedParts().length - 1)) * (0.7 + Math.random() * 0.6) / ((rushEvent && rushEvent.spawn) || 1) / (1 + 0.1 * storeLv('ads'));
   }
   for (const c of customers) updateCustomer(c, dt);
   customers = customers.filter(c => !c.remove);
@@ -2330,6 +2376,7 @@ function anyAffordable() {
   if (state.deliveryLv < MAX_STOCKROOM_LV && state.money >= deliveryCost()) return true;
   if (state.truckLv < MAX_STOCKROOM_LV && state.money >= truckCost()) return true;
   for (const u of STAFF_UPGRADES) if (state.staff[u.staff] && staffLv(u.id) < u.max && state.money >= staffUpCost(u.id)) return true;
+  if (state.expanded) for (const u of STORE_UPGRADES) if (storeLv(u.id) < u.max && state.money >= storeUpCost(u.id)) return true;
   return false;
 }
 function staffRemaining(k) { return STAFF[k].cost - (state.staffPaid[k] || 0); }
@@ -2377,6 +2424,13 @@ function showUpgrades() {
   html += `<div class="group">Stockroom <span>Deliveries every ${truckInterval()}s</span></div>`;
   html += cappedRow('delivery', '📦', 'Bigger Deliveries', `Crates hold ${crateMax()}${state.deliveryLv < MAX_STOCKROOM_LV ? ` → ${crateMax() + 8}` : ''}`, state.deliveryLv, MAX_STOCKROOM_LV, deliveryCost());
   html += cappedRow('truck', '🚚', 'Faster Trucks', `A truck every ${truckInterval()}s${state.truckLv < MAX_STOCKROOM_LV ? ` → ${Math.max(15, truckInterval() - 5)}s` : ''}`, state.truckLv, MAX_STOCKROOM_LV, truckCost());
+  html += `<div class="group">Store <span>Big upgrades for a finished store</span></div>`;
+  for (const u of STORE_UPGRADES) {
+    const lv = storeLv(u.id);
+    html += `<div class="item ${state.expanded ? '' : 'locked'}"><div class="avatar" style="--c:#ffe9f2">${state.expanded ? u.icon : '🔒'}</div>
+      <div class="info"><div class="title">${u.title} <small>Lv ${lv}/${u.max}</small></div><div class="desc">${state.expanded ? u.desc(lv) : 'Expand the store first'}</div></div>
+      ${!state.expanded ? '' : lv >= u.max ? '<button class="btn owned" disabled>MAX</button>' : `<button class="btn green" data-act="storeUp" data-id="${u.id}" data-cost="${storeUpCost(u.id)}">Buy<small>${money$(storeUpCost(u.id))}</small></button>`}</div>`;
+  }
   html += franchiseHtml();
   showModal(html, true);
   updateHud(1);
@@ -2489,6 +2543,22 @@ function handleAction(el, act, id) {
     }
     case 'claimAch': {
       if (state.achDone.includes(id) && !state.achClaimed.includes(id)) { state.achClaimed.push(id); state.stars++; sfx.unlock(); confetti(); toast(`⭐ +1 Star! Profit x${starMult().toFixed(2)}`); showMissions(); }
+      break;
+    }
+    case 'storeUp': {
+      const u = STORE_UP[id];
+      if (u && state.expanded && storeLv(id) < u.max && spend(storeUpCost(id))) {
+        state.storeUp[id] = storeLv(id) + 1; sfx.unlock(); confetti();
+        toast(`${u.icon} ${u.title} Lv ${storeLv(id)}!`); showUpgrades();
+      }
+      break;
+    }
+    case 'claimGoal': {
+      const gl = GOAL[id];
+      if (gl && state.goalsDone.includes(id) && !state.goalsClaimed.includes(id)) {
+        state.goalsClaimed.push(id); const r = goalReward(gl); bank(r); sfx.cash(); confetti();
+        toast(`🎯 Goal done! +${money$(r)}`); showMissions();
+      }
       break;
     }
     case 'delivery':
