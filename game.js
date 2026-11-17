@@ -1781,10 +1781,7 @@ function buildFloor() {
   const LY = curLayout();
   if (T.planks !== null) drawPlanks(...LY.planks, T.planks);
   // store-logo rug in the open floor
-  const [RX, RY] = LY.rug;
-  rr(RX, RY, 184, 68, 34); ctx.fillStyle = '#4a2f9e'; ctx.fill();
-  rr(RX + 6, RY + 6, 172, 56, 28); ctx.strokeStyle = '#ffc83d'; ctx.lineWidth = 2.5; ctx.setLineDash([6, 4]); ctx.stroke(); ctx.setLineDash([]);
-  text(state.storeName.toUpperCase().slice(0, 14), RX + 102, RY + 35, 15, '#fff');
+  drawStoreRug(...LY.rug);
   // shadows under the furniture that's in the store
   for (const r of COUNTERS) softShadow(r, 9);
   for (const s of PARTS) if (state.sec[s.id].unlocked) softShadow(s.shelf);
@@ -1805,6 +1802,39 @@ function buildFloor() {
   text('WELCOME', ENTRANCE.x + ENTRANCE.w / 2, H - 45, 13, '#ffc83d');
   ctx = main;
   floorCache = c;
+}
+// The store-name rug: navy weave, gold diamond border, fringe on the ends and a monitor badge
+function drawStoreRug(x, y) {
+  const W = 184, H2 = 68;
+  ctx.strokeStyle = '#e9dcc0'; ctx.lineWidth = 1.6; ctx.lineCap = 'round'; ctx.beginPath();
+  for (let k = y + 5; k < y + H2 - 3; k += 4) { ctx.moveTo(x + 1, k); ctx.lineTo(x - 7, k + 0.8); ctx.moveTo(x + W - 1, k); ctx.lineTo(x + W + 7, k + 0.8); }
+  ctx.stroke(); ctx.lineCap = 'butt';
+  rr(x, y + 3, W, H2, 4); ctx.fillStyle = 'rgba(20,10,50,.18)'; ctx.fill();
+  rr(x, y, W, H2, 4); ctx.fillStyle = '#1f2f5c'; ctx.fill();
+  // woven texture
+  ctx.save(); rr(x, y, W, H2, 4); ctx.clip();
+  ctx.fillStyle = 'rgba(255,255,255,.045)'; for (let k = y + 1; k < y + H2; k += 3) ctx.fillRect(x, k, W, 1);
+  ctx.fillStyle = 'rgba(0,0,0,.08)'; for (let k = x + 2; k < x + W; k += 6) ctx.fillRect(k, y, 1, H2);
+  const rnd = seeded(3); ctx.fillStyle = 'rgba(255,255,255,.06)';
+  for (let i = 0; i < 220; i++) ctx.fillRect(x + rnd() * W, y + rnd() * H2, 1.5, 1.5);
+  ctx.restore();
+  // gold border band with little diamonds
+  rr(x + 5, y + 5, W - 10, H2 - 10, 3); ctx.strokeStyle = '#d9a93a'; ctx.lineWidth = 5; ctx.stroke();
+  ctx.fillStyle = '#1f2f5c';
+  const dia = (cx, cy) => { ctx.beginPath(); ctx.moveTo(cx, cy - 1.8); ctx.lineTo(cx + 1.8, cy); ctx.lineTo(cx, cy + 1.8); ctx.lineTo(cx - 1.8, cy); ctx.fill(); };
+  for (let k = x + 12; k < x + W - 8; k += 8) { dia(k, y + 5); dia(k, y + H2 - 5); }
+  for (let k = y + 13; k < y + H2 - 8; k += 8) { dia(x + 5, k); dia(x + W - 5, k); }
+  rr(x + 11, y + 11, W - 22, H2 - 22, 2); ctx.strokeStyle = 'rgba(217,169,58,.5)'; ctx.lineWidth = 1; ctx.stroke();
+  // monitor badge
+  ctx.beginPath(); ctx.arc(x + 36, y + H2 / 2, 15, 0, Math.PI * 2); ctx.fillStyle = '#d9a93a'; ctx.fill();
+  rr(x + 27, y + 26, 18, 12, 2); ctx.fillStyle = '#1f2f5c'; ctx.fill();
+  rr(x + 29, y + 28, 14, 8, 1); ctx.fillStyle = '#3ee8ff'; ctx.fill();
+  ctx.fillStyle = '#1f2f5c'; ctx.fillRect(x + 34.5, y + 38, 3, 3); ctx.fillRect(x + 31, y + 41, 10, 2);
+  // the name shrinks to fit between the badge and the border
+  const nm = state.storeName.toUpperCase().slice(0, 14);
+  ctx.font = '700 14px Fredoka, ui-rounded, system-ui, sans-serif';
+  const size = Math.max(8, Math.min(14, 14 * 110 / Math.max(1, ctx.measureText(nm).width)));
+  text(nm, x + 112, y + H2 / 2 + 1, size, '#f4ead2');
 }
 // The outer wall: cinder blocks, bricks, or a smooth painted wall
 function drawWallFace(T) {
