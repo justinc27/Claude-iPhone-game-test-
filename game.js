@@ -819,13 +819,24 @@ function updateService(dt) {
 // ---------- Hooks filled in by later features ----------
 // ---------- Franchise (prestige) ----------
 const STAR_BONUS = 0.05;   // +5% profit per Star
+// Each new store is a step up: floor, walls, shelves and checkout counters get fancier.
+// floor: concrete | tile | bigtile | marble | showroom; walls: block | brick | trim | neon
+// counter: plywood | wood | laminate | glass | black; shelf: wood | paint | gloss | metal | glow
 const THEMES = [
-  { name: 'Strip Mall', a: '#f4f1ff', b: '#e9e4fb', wall: '#3b2a7a' },
-  { name: 'Shopping Mall', a: '#fff4e6', b: '#fbe6cf', wall: '#7a3f2a' },
-  { name: 'Warehouse', a: '#eaf0f4', b: '#dbe4eb', wall: '#2f3d4f' },
-  { name: 'Flagship Store', a: '#eafaf1', b: '#d6f1e3', wall: '#1d5a49' },
+  { name: 'Garage Shop', floor: 'concrete', a: '#e2dfd8', b: '#d8d4cc', wall: '#5b6170', walls: 'block', counter: 'plywood', shelf: 'wood', planks: null },
+  { name: 'Strip Mall', floor: 'tile', a: '#f4f1ff', b: '#e9e4fb', wall: '#3b2a7a', walls: 'brick', counter: 'wood', shelf: 'paint' },
+  { name: 'Shopping Mall', floor: 'bigtile', a: '#fff7ec', b: '#f5e9d6', wall: '#7a3f2a', walls: 'trim', trim: '#f0c987', counter: 'laminate', shelf: 'gloss' },
+  { name: 'Megastore', floor: 'marble', a: '#f4f5f8', b: '#e9ebf0', wall: '#24324a', walls: 'trim', trim: '#d9b45a', counter: 'glass', shelf: 'metal', planks: ['#8f5d3b', '#9a6642'], plankInk: '#ffe9cf' },
+  { name: 'Flagship Store', floor: 'showroom', a: '#3b3e55', b: '#35384d', wall: '#16131f', walls: 'neon', trim: '#3ee8ff', counter: 'black', shelf: 'glow', planks: ['#6e4630', '#77503a'], plankInk: '#ffe9cf', ink: '#d6d0f0' },
 ];
-function theme() { return THEMES[state.franchises % THEMES.length]; }
+// stores after the Flagship keep its look with a new neon colour
+const FLAGSHIP_ACCENTS = ['#3ee8ff', '#ff4fd8', '#ffc83d', '#5cff9d', '#a07bff', '#ff7a45'];
+function themeFor(n) {
+  const T = THEMES[Math.min(n, THEMES.length - 1)];
+  if (n < THEMES.length) return T;
+  return { ...T, name: 'Flagship Store', trim: FLAGSHIP_ACCENTS[(n - THEMES.length + 1) % FLAGSHIP_ACCENTS.length] };
+}
+function theme() { return themeFor(state.franchises); }
 function starMult() { return 1 + STAR_BONUS * state.stars; }
 function starsEarned() { return Math.floor(5 * Math.sqrt(state.lifetime / 50000)); }
 function claimableStars() { return Math.max(0, starsEarned() - state.starsClaimed); }
@@ -882,7 +893,7 @@ function buyPerk(id) {
 }
 function franchiseHtml() {
   const gain = claimableStars();
-  const next = THEMES[(state.franchises + 1) % THEMES.length];
+  const next = themeFor(state.franchises + 1);
   return `<div class="group">Franchise <span>Start over in a bigger location</span></div>
     <div class="item franchise"><div class="avatar" style="--c:#fff1b8">⭐</div>
       <div class="info"><div class="title">${state.stars} Stars <small>profit x${starMult().toFixed(2)}</small></div>
@@ -1590,32 +1601,15 @@ function buildFloor() {
   // walls with a light top edge
   rr(0, 0, W_FULL, H, 18); ctx.fillStyle = T.wall; ctx.fill();
   rr(4, 4, W_FULL - 8, H - 8, 15); ctx.strokeStyle = 'rgba(255,255,255,.14)'; ctx.lineWidth = 3; ctx.stroke();
-  // brick texture on the outer walls
-  ctx.strokeStyle = 'rgba(255,255,255,.10)'; ctx.lineWidth = 1; ctx.beginPath();
-  for (let y = 20, row = 0; y < H - 8; y += 8, row++) {
-    ctx.moveTo(2, y); ctx.lineTo(15, y); ctx.moveTo(W_FULL - 15, y); ctx.lineTo(W_FULL - 2, y);
-    const bx = row % 2 ? 6 : 11; ctx.moveTo(bx, y); ctx.lineTo(bx, y + 8); ctx.moveTo(W_FULL - bx, y); ctx.lineTo(W_FULL - bx, y + 8);
-  }
-  ctx.stroke();
+  drawWallFace(T);
   ctx.save();
   rr(16, 16, W_FULL - 32, H - 32, 10); ctx.clip();
-  // tiles, grout and a little speckle
-  for (let y = 16; y < H; y += 40) for (let x = 16; x < W_FULL; x += 40) {
-    ctx.fillStyle = ((x + y) / 40) % 2 === 0 ? T.a : T.b;
-    ctx.fillRect(x, y, 40, 40);
-    let h = (x * 73856093) ^ (y * 19349663);
-    ctx.fillStyle = 'rgba(43,35,80,.05)';
-    for (let k = 0; k < 3; k++) { h = (h * 1103515245 + 12345) & 0x7fffffff; ctx.fillRect(x + (h % 36) + 2, y + ((h >> 8) % 36) + 2, 2, 2); }
-  }
-  ctx.strokeStyle = 'rgba(43,35,80,.07)'; ctx.lineWidth = 1;
-  ctx.beginPath();
-  for (let x = 16; x <= W_FULL; x += 40) { ctx.moveTo(x, 16); ctx.lineTo(x, H); }
-  for (let y = 16; y <= H; y += 40) { ctx.moveTo(16, y); ctx.lineTo(W_FULL, y); }
-  ctx.stroke();
+  drawFloorSurface(T);
   // warm pools of light under the ceiling lights
+  const dark = T.floor === 'showroom';
   for (const l of LIGHTS) {
     const g = ctx.createRadialGradient(l.x, l.y, 10, l.x, l.y, 190);
-    g.addColorStop(0, 'rgba(255,248,225,.45)'); g.addColorStop(1, 'rgba(255,248,225,0)');
+    g.addColorStop(0, dark ? 'rgba(255,248,225,.16)' : 'rgba(255,248,225,.45)'); g.addColorStop(1, 'rgba(255,248,225,0)');
     ctx.fillStyle = g; ctx.fillRect(l.x - 190, l.y - 190, 380, 380);
   }
   // shading where the floor meets the walls
@@ -1628,8 +1622,8 @@ function buildFloor() {
   edge(0, H - 16, 0, H - 48, W_FULL, 32);
   edge(16, 0, 48, 0, 32, H);
   edge(W_FULL - 16, 0, W_FULL - 48, 0, 32, H);
-  // wooden plank floor in the checkout area
-  drawPlanks(236, 736, 350, 268);
+  // wooden plank floor in the checkout area (the Garage Shop is bare concrete)
+  if (T.planks !== null) drawPlanks(236, 736, 350, 268, T.planks);
   // store-logo rug in the open floor
   rr(208, 581, 184, 68, 34); ctx.fillStyle = '#4a2f9e'; ctx.fill();
   rr(214, 587, 172, 56, 28); ctx.strokeStyle = '#ffc83d'; ctx.lineWidth = 2.5; ctx.setLineDash([6, 4]); ctx.stroke(); ctx.setLineDash([]);
@@ -1641,6 +1635,7 @@ function buildFloor() {
   ctx.restore();
   // crisp baseboard line
   rr(16, 16, W_FULL - 32, H - 32, 10); ctx.strokeStyle = 'rgba(20,10,50,.22)'; ctx.lineWidth = 2; ctx.stroke();
+  if (T.trim) wallTrim(() => rr(12, 12, W_FULL - 24, H - 24, 12), T);
   // doors and the entrance mat
   ctx.fillStyle = '#8fd3ff';
   ctx.fillRect(ENTRANCE.x, H - 18, ENTRANCE.w, 18);
@@ -1654,8 +1649,107 @@ function buildFloor() {
   ctx = main;
   floorCache = c;
 }
+// The outer wall: cinder blocks, bricks, or a smooth painted wall
+function drawWallFace(T) {
+  ctx.strokeStyle = 'rgba(255,255,255,.10)'; ctx.lineWidth = 1; ctx.beginPath();
+  if (T.walls === 'block') {
+    for (let y = 20, row = 0; y < H - 8; y += 14, row++) {
+      ctx.moveTo(2, y); ctx.lineTo(15, y); ctx.moveTo(W_FULL - 15, y); ctx.lineTo(W_FULL - 2, y);
+      const bx = row % 2 ? 4 : 11; ctx.moveTo(bx, y); ctx.lineTo(bx, y + 14); ctx.moveTo(W_FULL - bx, y); ctx.lineTo(W_FULL - bx, y + 14);
+    }
+    for (let x = 20, col = 0; x < W_FULL - 8; x += 22, col++) {
+      ctx.moveTo(x, 2); ctx.lineTo(x, 15); ctx.moveTo(x, H - 15); ctx.lineTo(x, H - 2);
+    }
+  } else if (T.walls === 'brick') {
+    for (let y = 20, row = 0; y < H - 8; y += 8, row++) {
+      ctx.moveTo(2, y); ctx.lineTo(15, y); ctx.moveTo(W_FULL - 15, y); ctx.lineTo(W_FULL - 2, y);
+      const bx = row % 2 ? 6 : 11; ctx.moveTo(bx, y); ctx.lineTo(bx, y + 8); ctx.moveTo(W_FULL - bx, y); ctx.lineTo(W_FULL - bx, y + 8);
+    }
+  }
+  ctx.stroke();
+}
+// A trim line along a wall: gold-ish paint, or a glowing neon strip in the Flagship
+function wallTrim(path, T) {
+  if (T.walls === 'neon') {
+    for (const [w, a] of [[7, 0.18], [4, 0.35]]) { path(); ctx.globalAlpha = a; ctx.strokeStyle = T.trim; ctx.lineWidth = w; ctx.stroke(); }
+    ctx.globalAlpha = 1; path(); ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.2; ctx.stroke();
+  } else { path(); ctx.strokeStyle = T.trim; ctx.lineWidth = 2; ctx.stroke(); }
+}
+// A little seeded random number, so the floor looks the same every time it's drawn
+function seeded(seed) { let h = seed & 0x7fffffff; return () => (h = (h * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff; }
+// The shop floor for each store tier
+function drawFloorSurface(T) {
+  if (T.floor === 'concrete') {
+    ctx.fillStyle = T.a; ctx.fillRect(16, 16, W_FULL, H);
+    const rnd = seeded(7);
+    // patchy colour and oil stains
+    for (let k = 0; k < 70; k++) {
+      ctx.fillStyle = rnd() < 0.5 ? 'rgba(255,255,255,.12)' : 'rgba(70,60,50,.05)';
+      ctx.beginPath(); ctx.ellipse(16 + rnd() * W_FULL, 16 + rnd() * H, 20 + rnd() * 50, 12 + rnd() * 30, rnd() * 3, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.fillStyle = 'rgba(60,55,50,.07)';
+    for (let k = 0; k < 12; k++) { ctx.beginPath(); ctx.ellipse(16 + rnd() * W_FULL, 180 + rnd() * (H - 200), 8 + rnd() * 14, 5 + rnd() * 9, rnd() * 3, 0, Math.PI * 2); ctx.fill(); }
+    ctx.fillStyle = 'rgba(43,35,80,.05)';
+    for (let k = 0; k < 900; k++) ctx.fillRect(16 + rnd() * W_FULL, 16 + rnd() * H, 1.5, 1.5);
+    // saw-cut slab joints and a few hairline cracks
+    ctx.strokeStyle = 'rgba(60,55,50,.18)'; ctx.lineWidth = 1.5; ctx.beginPath();
+    for (let x = 16; x <= W_FULL; x += 160) { ctx.moveTo(x, 16); ctx.lineTo(x, H); }
+    for (let y = 16; y <= H; y += 160) { ctx.moveTo(16, y); ctx.lineTo(W_FULL, y); }
+    ctx.stroke();
+    ctx.strokeStyle = 'rgba(60,55,50,.14)'; ctx.lineWidth = 1; ctx.beginPath();
+    for (let k = 0; k < 9; k++) {
+      let x = 16 + rnd() * W_FULL, y = 180 + rnd() * (H - 200); ctx.moveTo(x, y);
+      for (let j = 0; j < 4; j++) { x += (rnd() - 0.3) * 26; y += (rnd() - 0.5) * 26; ctx.lineTo(x, y); }
+    }
+    ctx.stroke();
+    return;
+  }
+  const size = T.floor === 'tile' ? 40 : 80;
+  const rnd = seeded(11);
+  for (let y = 16; y < H; y += size) for (let x = 16; x < W_FULL; x += size) {
+    ctx.fillStyle = T.floor === 'marble' ? (rnd() < 0.5 ? T.a : T.b) : (((x + y) / size) % 2 === 0 ? T.a : T.b);
+    ctx.fillRect(x, y, size, size);
+    if (T.floor === 'tile') {
+      let h = (x * 73856093) ^ (y * 19349663);
+      ctx.fillStyle = 'rgba(43,35,80,.05)';
+      for (let k = 0; k < 3; k++) { h = (h * 1103515245 + 12345) & 0x7fffffff; ctx.fillRect(x + (h % 36) + 2, y + ((h >> 8) % 36) + 2, 2, 2); }
+    }
+  }
+  if (T.floor === 'marble') {
+    // soft grey veins running across the stone
+    ctx.lineCap = 'round';
+    for (let k = 0; k < 46; k++) {
+      let x = 16 + rnd() * W_FULL, y = 16 + rnd() * H;
+      ctx.strokeStyle = `rgba(120,125,145,${0.10 + rnd() * 0.12})`; ctx.lineWidth = 0.8 + rnd() * 1.4;
+      ctx.beginPath(); ctx.moveTo(x, y);
+      for (let j = 0; j < 3; j++) { const nx = x + 20 + rnd() * 50, ny = y + (rnd() - 0.5) * 50; ctx.quadraticCurveTo((x + nx) / 2 + (rnd() - 0.5) * 30, (y + ny) / 2 + (rnd() - 0.5) * 30, nx, ny); x = nx; y = ny; }
+      ctx.stroke();
+    }
+    ctx.lineCap = 'butt';
+  }
+  // grout lines
+  const dark = T.floor === 'showroom';
+  ctx.strokeStyle = dark ? 'rgba(0,0,0,.35)' : T.floor === 'tile' ? 'rgba(43,35,80,.07)' : 'rgba(43,35,80,.10)'; ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let x = 16; x <= W_FULL; x += size) { ctx.moveTo(x, 16); ctx.lineTo(x, H); }
+  for (let y = 16; y <= H; y += size) { ctx.moveTo(16, y); ctx.lineTo(W_FULL, y); }
+  ctx.stroke();
+  if (dark) {
+    ctx.strokeStyle = 'rgba(255,255,255,.05)'; ctx.beginPath();
+    for (let x = 17; x <= W_FULL; x += size) { ctx.moveTo(x, 16); ctx.lineTo(x, H); }
+    ctx.stroke();
+  }
+  // polished floors: diagonal shine streaks
+  if (T.floor !== 'tile') {
+    ctx.fillStyle = dark ? 'rgba(255,255,255,.045)' : 'rgba(255,255,255,.35)';
+    for (let k = 0; k < 9; k++) {
+      const x = 40 + k * 120 + rnd() * 40, w = 18 + rnd() * 26;
+      ctx.beginPath(); ctx.moveTo(x, 16); ctx.lineTo(x + w, 16); ctx.lineTo(x + w - 260, H); ctx.lineTo(x - 260, H); ctx.fill();
+    }
+  }
+}
 function drawFloor() {
-  const key = [state.storeName, state.franchises % THEMES.length, state.expanded, ...SECTIONS.map(s => state.sec[s.id].unlocked ? 1 : 0), Math.round(zoom * DPR * 100)].join(',');
+  const key = [state.storeName, theme().name, theme().trim, state.expanded, ...SECTIONS.map(s => state.sec[s.id].unlocked ? 1 : 0), Math.round(zoom * DPR * 100)].join(',');
   if (key !== floorKey || !floorCache) { buildFloor(); floorKey = key; }
   ctx.drawImage(floorCache, 0, 0, W_FULL, H);
 }
@@ -1696,6 +1790,7 @@ function drawWalls() {
     softShadow(r, 6);
     rr(r.x, r.y, r.w, r.h, 6); ctx.fillStyle = theme().wall; ctx.fill();
     rr(r.x + 3, r.y + 3, r.w - 6, Math.max(0, r.h - 6), 4); ctx.strokeStyle = 'rgba(255,255,255,.14)'; ctx.lineWidth = 2; ctx.stroke();
+    if (theme().trim) wallTrim(() => { ctx.beginPath(); ctx.moveTo(r.x + r.w / 2, r.y + 4); ctx.lineTo(r.x + r.w / 2, r.y + r.h - 4); }, theme());
   }
   if (!state.expanded) {
     // what's behind the wall
@@ -1799,6 +1894,29 @@ function drawStockroom() {
 
 // A shelf in its section's colour, with a fine grain and speckle for texture
 function shelfBody(r, color) {
+  const k = theme().shelf;
+  if (k === 'wood') {
+    // plain plywood shelving with a strip of the section's colour along the front
+    rr(r.x, r.y + 8, r.w, r.h, 4); ctx.fillStyle = '#8f7146'; ctx.fill();
+    rr(r.x, r.y, r.w, r.h, 4); ctx.fillStyle = '#d2b07a'; ctx.fill();
+    rr(r.x + 4, r.y + 4, r.w - 8, r.h - 8, 3); ctx.fillStyle = '#c29f69'; ctx.fill();
+    ctx.strokeStyle = 'rgba(110,80,40,.25)'; ctx.lineWidth = 1; ctx.beginPath();
+    if (r.h > r.w) for (let x = r.x + 9; x < r.x + r.w - 4; x += 9) { ctx.moveTo(x, r.y + 5); ctx.lineTo(x, r.y + r.h - 5); }
+    else for (let y = r.y + 9; y < r.y + r.h - 4; y += 9) { ctx.moveTo(r.x + 5, y); ctx.lineTo(r.x + r.w - 5, y); }
+    ctx.stroke();
+    if (r.h > r.w) rr(r.x < W_MAIN / 2 ? r.x + r.w - 5 : r.x + 1, r.y + 6, 4, r.h - 12, 2);
+    else rr(r.x + 6, r.y + r.h - 5, r.w - 12, 4, 2);
+    ctx.fillStyle = color; ctx.fill();
+    return;
+  }
+  if (k === 'glow') {
+    rr(r.x, r.y + 8, r.w, r.h, 10); ctx.fillStyle = '#0b0912'; ctx.fill();
+    rr(r.x, r.y, r.w, r.h, 10); ctx.fillStyle = '#221e34'; ctx.fill();
+    rr(r.x + 5, r.y + 5, r.w - 10, r.h - 10, 7); ctx.fillStyle = shade(color, -0.45); ctx.fill();
+    for (const [w, a] of [[7, 0.18], [3.5, 0.4]]) { rr(r.x, r.y, r.w, r.h, 10); ctx.globalAlpha = a; ctx.strokeStyle = color; ctx.lineWidth = w; ctx.stroke(); }
+    ctx.globalAlpha = 1; rr(r.x, r.y, r.w, r.h, 10); ctx.strokeStyle = shade(color, 0.45); ctx.lineWidth = 1.2; ctx.stroke();
+    return;
+  }
   rr(r.x, r.y + 8, r.w, r.h, 10); ctx.fillStyle = shade(color, -0.35); ctx.fill();
   rr(r.x, r.y, r.w, r.h, 10); ctx.fillStyle = shade(color, 0.12); ctx.fill();
   const ix = r.x + 5, iy = r.y + 5, iw = r.w - 10, ih = r.h - 10;
@@ -1817,6 +1935,20 @@ function shelfBody(r, color) {
   }
   ctx.restore();
   rr(r.x + 8, r.y + 2, r.w - 16, 3, 1.5); ctx.fillStyle = 'rgba(255,255,255,.35)'; ctx.fill();
+  if (k === 'gloss') {
+    // a chrome rim and a stronger shine
+    rr(r.x + 1, r.y + 1, r.w - 2, r.h - 2, 9); ctx.strokeStyle = 'rgba(255,255,255,.75)'; ctx.lineWidth = 2; ctx.stroke();
+    rr(r.x + 8, r.y + 2, r.w - 16, 3, 1.5); ctx.fillStyle = 'rgba(255,255,255,.4)'; ctx.fill();
+  } else if (k === 'metal') {
+    // a brushed-steel frame and a glass front
+    rr(r.x + 1.5, r.y + 1.5, r.w - 3, r.h - 3, 9); ctx.strokeStyle = '#d5dbe4'; ctx.lineWidth = 3.5; ctx.stroke();
+    rr(r.x + 1.5, r.y + 1.5, r.w - 3, r.h - 3, 9); ctx.strokeStyle = '#7d8798'; ctx.lineWidth = 1; ctx.stroke();
+    ctx.save(); rr(r.x + 5, r.y + 5, r.w - 10, r.h - 10, 7); ctx.clip();
+    ctx.fillStyle = 'rgba(200,235,255,.16)'; ctx.fillRect(r.x, r.y, r.w, r.h);
+    ctx.fillStyle = 'rgba(255,255,255,.22)';
+    ctx.beginPath(); ctx.moveTo(r.x, r.y + r.h * 0.6); ctx.lineTo(r.x + r.w * 0.6, r.y); ctx.lineTo(r.x + r.w * 0.6 + 10, r.y); ctx.lineTo(r.x + 10, r.y + r.h * 0.6); ctx.fill();
+    ctx.restore();
+  }
 }
 function drawShelf(s) {
   const st = state.sec[s.id];
@@ -1862,7 +1994,7 @@ function drawShelf(s) {
   ctx.restore();
   const cx = vert ? (r.x < W_MAIN / 2 ? r.x + r.w + 6 : r.x - 6) : r.x + r.w + 8;
   const cy = vert ? r.y + r.h + 14 : r.y + r.h / 2;
-  text(`${st.stock}/${cap}`, cx, cy, 11, st.stock ? '#6b6390' : '#ff5a5f', 700, vert ? (r.x < W_MAIN / 2 ? 'left' : 'right') : 'left');
+  text(`${st.stock}/${cap}`, cx, cy, 11, st.stock ? (theme().ink || '#6b6390') : '#ff5a5f', 700, vert ? (r.x < W_MAIN / 2 ? 'left' : 'right') : 'left');
   if (!st.stock) {
     if (vert) { ctx.save(); ctx.translate(r.x + r.w / 2, r.y + r.h / 2); ctx.rotate(-Math.PI / 2); outlinedText('EMPTY!', 0, 0, 15, '#ff5a5f', '#fff'); ctx.restore(); }
     else outlinedText('EMPTY!', r.x + r.w / 2, r.y + r.h / 2, 15, '#ff5a5f', '#fff');
@@ -1894,7 +2026,8 @@ function drawCashPile(spot, amount) {
   outlinedText(money$(amount), spot.x, spot.y - n * 4 - 12, 12, '#7ef0a8', '#1e5e36');
 }
 function drawCheckout() {
-  text('CHECKOUT', 390, 892, 13, '#7a4b1e');
+  const T = theme(), ink = T.plankInk || '#7a4b1e';
+  text('CHECKOUT', 390, 892, 13, ink);
   for (let l = 0; l < 2; l++) {
     const r = COUNTERS[l], reg = REG[l];
     const here = dist(state.player, reg) < REG_RADIUS;
@@ -1904,11 +2037,10 @@ function drawCheckout() {
     ctx.fillStyle = here ? 'rgba(46,204,113,.45)' : 'rgba(255,200,61,.45)'; ctx.fill();
     ctx.setLineDash([6, 5]); ctx.lineWidth = 3; ctx.strokeStyle = here ? '#1e9e55' : '#d99a00'; ctx.stroke(); ctx.setLineDash([]);
     // counter
-    rr(r.x, r.y + 7, r.w, r.h, 9); ctx.fillStyle = '#7a4b1e'; ctx.fill();
-    rr(r.x, r.y, r.w, r.h, 9); ctx.fillStyle = '#b8743a'; ctx.fill();
+    counterBody(r, T);
     rr(r.x + 6, r.y + 30, r.w - 12, 26, 5); ctx.fillStyle = '#2b2350'; ctx.fill();
     rr(r.x + 9, r.y + 34, r.w - 18, 10, 3); ctx.fillStyle = '#7ef0a8'; ctx.fill();
-    text(l === 0 ? 'LANE 1' : 'LANE 2', r.x + r.w / 2, r.y - 10, 10, '#7a4b1e');
+    text(l === 0 ? 'LANE 1' : 'LANE 2', r.x + r.w / 2, r.y - 10, 10, ink);
     // queue markers
     for (let i = 0; i < 4; i++) {
       const q = queueSlot(l, i);
@@ -1925,6 +2057,40 @@ function drawCheckout() {
   for (let l = 0; l < 2; l++) drawCashPile(PILE_SPOTS[l], state.piles[l]);
 }
 
+// A checkout counter in this store's style
+function counterBody(r, T) {
+  const k = T.counter;
+  if (k === 'plywood') {
+    rr(r.x, r.y + 7, r.w, r.h, 4); ctx.fillStyle = '#9c7f52'; ctx.fill();
+    rr(r.x, r.y, r.w, r.h, 4); ctx.fillStyle = '#d8bd8e'; ctx.fill();
+    ctx.strokeStyle = 'rgba(120,90,50,.25)'; ctx.lineWidth = 1; ctx.beginPath();
+    for (let y = r.y + 8; y < r.y + r.h; y += 11) { ctx.moveTo(r.x + 3, y); ctx.lineTo(r.x + r.w - 3, y + 2); }
+    ctx.stroke();
+    ctx.fillStyle = '#8a7a66';
+    for (const [x, y] of [[r.x + 4, r.y + 4], [r.x + r.w - 6, r.y + 4], [r.x + 4, r.y + r.h - 6], [r.x + r.w - 6, r.y + r.h - 6]]) ctx.fillRect(x, y, 2, 2);
+  } else if (k === 'wood') {
+    rr(r.x, r.y + 7, r.w, r.h, 9); ctx.fillStyle = '#7a4b1e'; ctx.fill();
+    rr(r.x, r.y, r.w, r.h, 9); ctx.fillStyle = '#b8743a'; ctx.fill();
+  } else if (k === 'laminate') {
+    rr(r.x, r.y + 7, r.w, r.h, 9); ctx.fillStyle = '#8f97aa'; ctx.fill();
+    rr(r.x, r.y, r.w, r.h, 9); ctx.fillStyle = '#b8743a'; ctx.fill();
+    rr(r.x + 3, r.y + 3, r.w - 6, r.h - 6, 7); ctx.fillStyle = '#f6f3ee'; ctx.fill();
+    rr(r.x + 6, r.y + 5, r.w - 12, 3, 1.5); ctx.fillStyle = 'rgba(255,255,255,.9)'; ctx.fill();
+  } else if (k === 'glass') {
+    rr(r.x, r.y + 7, r.w, r.h, 9); ctx.fillStyle = '#4c5870'; ctx.fill();
+    rr(r.x, r.y, r.w, r.h, 9); ctx.fillStyle = '#c7d0db'; ctx.fill();
+    rr(r.x + 4, r.y + 4, r.w - 8, r.h - 8, 6); ctx.fillStyle = 'rgba(150,205,245,.75)'; ctx.fill();
+    ctx.save(); rr(r.x + 4, r.y + 4, r.w - 8, r.h - 8, 6); ctx.clip();
+    ctx.fillStyle = 'rgba(255,255,255,.45)';
+    ctx.beginPath(); ctx.moveTo(r.x, r.y + 20); ctx.lineTo(r.x + r.w, r.y + 4); ctx.lineTo(r.x + r.w, r.y + 12); ctx.lineTo(r.x, r.y + 28); ctx.fill();
+    ctx.restore();
+  } else {
+    rr(r.x, r.y + 7, r.w, r.h, 9); ctx.fillStyle = '#07060c'; ctx.fill();
+    rr(r.x, r.y, r.w, r.h, 9); ctx.fillStyle = '#211d33'; ctx.fill();
+    for (const [w, a] of [[6, 0.2], [3, 0.45]]) { rr(r.x, r.y, r.w, r.h, 9); ctx.globalAlpha = a; ctx.strokeStyle = T.trim; ctx.lineWidth = w; ctx.stroke(); }
+    ctx.globalAlpha = 1; rr(r.x, r.y, r.w, r.h, 9); ctx.strokeStyle = '#fff'; ctx.lineWidth = 1; ctx.stroke();
+  }
+}
 function drawService() {
   const s = SEC.svc, st = state.sec.svc, r = s.bench;
   if (!st.unlocked) {
@@ -1997,10 +2163,10 @@ function drawUnlockPads() {
   }
 }
 
-function drawPlanks(x0, y0, w, h) {
+function drawPlanks(x0, y0, w, h, cols = ['#d6b48a', '#ddbd94']) {
   ctx.save(); rr(x0, y0, w, h, 12); ctx.clip();
   for (let y = y0, row = 0; y < y0 + h; y += 18, row++) {
-    ctx.fillStyle = row % 2 ? '#d6b48a' : '#ddbd94'; ctx.fillRect(x0, y, w, 18);
+    ctx.fillStyle = row % 2 ? cols[0] : cols[1]; ctx.fillRect(x0, y, w, 18);
     ctx.fillStyle = 'rgba(110,70,30,.25)'; ctx.fillRect(x0, y + 17, w, 1.2);
     for (let x = x0 + (row % 3) * 37; x < x0 + w; x += 110) ctx.fillRect(x, y, 1.2, 18);
     ctx.strokeStyle = 'rgba(140,90,40,.12)'; ctx.lineWidth = 1;
@@ -2639,7 +2805,7 @@ function handleAction(el, act, id) {
     case 'franchise':
       if (!canFranchise()) { toast(`⭐ ${franchiseBlock()}`); break; }
       showModal(`<div class="emoji">⭐</div><h2>Open a new store?</h2>
-        <p>Pay <b>${money$(franchiseCost())}</b> to sell your ${theme().name} for <b>${claimableStars()} Stars</b> and open a ${THEMES[(state.franchises + 1) % THEMES.length].name}. Every Star adds 5% to all your prices, forever.</p>
+        <p>Pay <b>${money$(franchiseCost())}</b> to sell your ${theme().name} for <b>${claimableStars()} Stars</b> and open a ${themeFor(state.franchises + 1).name}. Every Star adds 5% to all your prices, forever.</p>
         <p>Your cash, sections, staff and upgrades start over. Stars, achievements and lifetime stats stay.</p>
         <button class="btn green" data-act="confirmFranchise">Franchise!</button><button class="btn disabled" data-act="close">Not yet</button>`);
       break;
