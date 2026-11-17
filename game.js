@@ -155,6 +155,9 @@ function freshState(keep = {}) {
     // late-game Store upgrades and Store goals: these belong to this store and reset on Franchise
     storeUp: { ads: 0, displays: 0, tools: 0 }, decorSeen: null, goalsDone: [], goalsClaimed: [], storeServed: 0, storeBuilt: 0,
     breakRoom: 0, breakPaid: 0,
+    // the first-time tutorial (-1: welcome not shown yet; TUT_STEPS.length: finished) and the one-time tips already shown;
+    // saves from before the tutorial count as finished
+    tut: keep.tut || { step: keep.lifetime ? 99 : -1 }, tipsSeen: keep.tipsSeen || null,
     piles: [0, 0], benchPile: 0,
     staff: { cashier: false, cashier2: false, stocker: false, tech: false },
     staffPaid: { cashier: 0, cashier2: 0, stocker: 0 },
@@ -1034,7 +1037,7 @@ function doFranchise() {
     storeName: state.storeName, sound: state.sound, haptics: state.haptics, lifetime: state.lifetime, served: state.served, built: state.built,
     restocked: state.restocked, sold: state.sold, stars: state.stars + gain, starsClaimed: state.starsClaimed + gain,
     franchises: state.franchises + 1, achDone: state.achDone, achClaimed: state.achClaimed, daily: state.daily,
-    starPerks: state.starPerks,
+    starPerks: state.starPerks, tut: state.tut, tipsSeen: state.tipsSeen,
     admin: { ...state.admin, savedMoney: 0 },
   };
   state = freshState(keep);
@@ -1051,6 +1054,7 @@ function doFranchise() {
 
 // ---------- Missions & achievements ----------
 function track(kind, id, n) {
+  tutEvent(kind);
   if (kind === 'restock') state.restocked += n;
   if (kind === 'sell') state.sold[id] = (state.sold[id] || 0) + n;
   if (state.daily) for (const m of state.daily.list) {
@@ -2797,8 +2801,104 @@ function drawFx() {
   }
 }
 
+// ---------- First-time tutorial ----------
+// A short checklist for new players. Each step points the arrow, pays a small reward and moves on.
+const TUT_STEPS = [
+  { icon: '🖱️', text: 'Walk to the stockroom and grab some mice', reward: 10, target: () => SEC.acc.crate, check: () => state.carry.includes('acc') },
+  { icon: '📦', text: 'Put the mice on the Accessories shelf', reward: 10, target: () => SEC.acc.stockSpot, event: 'restock' },
+  { icon: '🧾', text: 'Stand at the register to check out a shopper', reward: 20, target: () => REG[0], event: 'serve' },
+  { icon: '💵', text: 'Keep stocking and checking out until you have $120', reward: 20, check: () => state.money >= 120 || state.sec.case.unlocked },
+  { icon: '🗄️', text: 'Stand on the pad to unlock PC Cases', reward: 30, target: () => SEC.case.pad, check: () => state.sec.case.unlocked },
+  { icon: '⬆️', text: 'Open Upgrades and level up a section', reward: 50, event: 'level', upgrades: true },
+];
+function tutActive() { return state.tut && state.tut.step >= 0 && state.tut.step < TUT_STEPS.length; }
+function tutAdvance() {
+  const st = TUT_STEPS[state.tut.step];
+  state.tut.step++;
+  bank(st.reward, state.player.x, state.player.y - 40);
+  const done = $('#tutDone');
+  done.textContent = `✅ Done! +${money$(st.reward)}`;
+  done.classList.remove('show'); void done.offsetWidth; done.classList.add('show');
+  if (state.tut.step >= TUT_STEPS.length) { later(900, () => { toast('🎉 Tutorial complete! Your store is all yours'); confetti(); }); }
+  save();
+}
+function tutEvent(kind) {
+  if (!tutActive()) return;
+  if (TUT_STEPS[state.tut.step].event === kind) tutAdvance();
+}
+function updateTutorial() {
+  const on = tutActive();
+  document.body.classList.toggle('tut-on', on);
+  const card = $('#tutCard');
+  card.classList.toggle('show', on);
+  const st = on && TUT_STEPS[state.tut.step];
+  $('#tutBubble').classList.toggle('show', !!(st && st.upgrades && $('#modal').classList.contains('hidden')));
+  $('#upgradeBtn').classList.toggle('tut-glow', !!(st && st.upgrades));
+  if (!on) return;
+  if (st.check && st.check()) { tutAdvance(); return updateTutorial(); }
+  const n = state.tut.step + 1, html = `<div class="t-head"><span>Getting started</span><span>${n}/${TUT_STEPS.length}</span></div>
+    <div class="t-step">${st.icon} ${st.text}</div><div class="t-bar"><i style="width:${(n - 1) / TUT_STEPS.length * 100}%"></i></div>
+    <div class="t-reward">Reward: ${money$(st.reward)}</div><button class="t-skip" data-act="tutSkip">Skip</button>`;
+  if (card.dataset.html !== html) { card.innerHTML = html; card.dataset.html = html; }
+}
+// The welcome card for a brand-new player: name the store, then start (or skip) the tutorial
+function showWelcome() {
+  showModal(`<div class="emoji small">🏪</div><h2>Welcome, new owner!</h2>
+    <p>You just opened a small PC parts store. Stock the shelves, check out shoppers, and grow it into a megastore.</p>
+    <div class="name-card"><div class="lbl">🏪 Name your store</div><div class="sub">You can change it later in Settings</div>
+    <div class="name-field"><input id="nameInput" maxlength="14" value="${state.storeName.replace(/"/g, '&quot;')}"><span class="count" id="nameCount">${state.storeName.length}/14</span><span class="pen">✏️</span></div></div>
+    <button class="btn green" data-act="tutStart">Open my store! 🎉</button>
+    <button class="btn disabled" data-act="tutSkipWelcome">Skip the tutorial</button>`);
+  const x = $('#modalCard .modal-x'); if (x) x.remove();
+  const inp = $('#nameInput'), cnt = $('#nameCount');
+  if (inp && cnt) inp.addEventListener('input', () => { cnt.textContent = `${inp.value.length}/14`; });
+}
+function welcomeName() { const v = (($('#nameInput') || {}).value || '').trim(); if (v) state.storeName = v.slice(0, 14); }
+
+// ---------- One-time tips ----------
+// A short card the first time each system shows up (after the tutorial, one at a time, never over another menu)
+const TIPS = [
+  { id: 'svc', when: () => state.sec.svc.unlocked, emoji: '🛠️', title: 'Service Station open!', lines: [
+    ['👤', 'Some shoppers now ask for a repair, an upgrade or a full PC build.'],
+    ['⭕', 'Stand in the pink circle to work on it. Parts come straight out of stock.'],
+    ['💰', 'Builds pay the most. Hire a Tech to do them for you.']] },
+  { id: 'cashier', when: () => state.staff.cashier, emoji: '🧑‍💼', title: 'Your first hire!', lines: [
+    ['🧾', 'Cass checks out Lane 2, so you can keep restocking.'],
+    ['💵', 'Staff sales stack up as cash on the counter. Walk over it to collect.'],
+    ['⬆️', 'Upgrade your staff in the Upgrades menu.']] },
+  { id: 'stockout', when: () => unlockedParts().some(s => state.crates[s.id] <= 0), emoji: '🚚', title: 'A crate ran empty', lines: [
+    ['📦', 'The stockroom only holds so much. A truck brings more on a timer.'],
+    ['⏱️', 'The stockroom sign shows when the next delivery comes.'],
+    ['⬆️', 'Bigger Deliveries and Faster Trucks in Upgrades keep you stocked.']] },
+  { id: 'expand', when: () => state.expanded, emoji: '🧱', title: 'Your store just got bigger!', lines: [
+    ['🧠', 'The new wing has CPUs, RAM & Storage and Gaming Chairs to unlock.'],
+    ['✨', 'Store upgrades in the Upgrades menu boost the whole store.'],
+    ['☕', 'Build a Staff Break Room on the pad in the corner to speed up your staff.']] },
+  { id: 'star', when: () => state.achDone.length > 0, emoji: '⭐', title: 'You earned a Star!', lines: [
+    ['📋', 'Claim it in Missions. Achievements and goals are listed there.'],
+    ['⭐', 'Stars add 5% to all your prices, forever.'],
+    ['🛍️', 'Spend them on perks in the Star Shop (the ⭐ button).']] },
+  { id: 'franchise', when: () => allSectionsOpen(), emoji: '🏬', title: 'Every section is open!', lines: [
+    ['💰', 'Your next goal: Franchise into a bigger store (in Upgrades).'],
+    ['⭐', 'You start over in a fancier store and keep your Stars.'],
+    ['🚀', 'Stars boost every price, so each store grows faster.']] },
+];
+function checkTips() {
+  if (!state.tipsSeen) { state.tipsSeen = TIPS.filter(t => t.when()).map(t => t.id); return; }   // don't explain what a player already has
+  if (tutActive() || state.tut.step < 0 || !$('#modal').classList.contains('hidden')) return;
+  const t = TIPS.find(x => !state.tipsSeen.includes(x.id) && x.when());
+  if (!t) return;
+  state.tipsSeen.push(t.id);
+  showModal(`<div class="emoji">${t.emoji}</div><h2>${t.title}</h2>
+    <ul class="tip-list">${t.lines.map(([i, l]) => `<li><span>${i}</span><span>${l}</span></li>`).join('')}</ul>
+    <button class="btn green" data-act="close">Got it!</button>`);
+  save();
+}
+
 // ---------- Objective arrow (tutorial help) ----------
 function objective() {
+  const ts = tutActive() && TUT_STEPS[state.tut.step];
+  if (ts && ts.target) return { pt: ts.target(), text: '' };
   const p = state.player;
   const atReg = dist(p, REG[0]) < REG_RADIUS || dist(p, REG[1]) < REG_RADIUS;
   const carried = state.carry[0];
@@ -2820,7 +2920,7 @@ function objective() {
     const J = JOBS[jc.job.type], missing = missingParts(jc.job);
     if (missing.length && !state.staff.tech) {
       const carrying = missing.find(id => state.carry.includes(id));
-      if (carrying) return { pt: { x: 300, y: 248 }, text: `Bring the ${SEC[carrying].item} to the Service Station` };
+      if (carrying) return { pt: { x: SEC.svc.bench.x + SEC.svc.bench.w / 2, y: SEC.svc.bench.y + SEC.svc.bench.h + 8 }, text: `Bring the ${SEC[carrying].item} to the Service Station` };
       if (missing.some(partInStock)) { if (dist(p, SEC.svc.workPad) > 34) return { pt: SEC.svc.workPad, text: `A ${J.name.toLowerCase()} is waiting. Stand in the circle and the parts come out of stock` }; }
       else return { pt: SEC[missing[0]].crate, text: `${J.name} job needs a ${SEC[missing[0]].item}: wait for the next delivery` };
     } else if (!missing.length && !state.staff.tech && dist(p, SEC.svc.workPad) > 34) return { pt: SEC.svc.workPad, text: `A ${J.name.toLowerCase()} is ready. Go work on it!` };
@@ -2908,10 +3008,12 @@ function updateHud(dt) {
   hudTimer = 0;
   $('#incomeVal').textContent = money$(state.rate * 60);
   $('#storeName').textContent = (adminActive() ? `🛠️ ADMIN${adminSpeed() > 1 ? ' ' + adminSpeed() + 'x' : ''} · ` : '') + state.storeName;
-  currentObjective = state.lifetime < 4000 || (queues[0].length && !state.staff.cashier) || state.carry.some(id => !boxUsable(id)) ? objective() : null;
+  currentObjective = tutActive() || state.lifetime < 4000 || (queues[0].length && !state.staff.cashier) || state.carry.some(id => !boxUsable(id)) ? objective() : null;
   const hint = $('#hint');
   hint.textContent = currentObjective ? currentObjective.text : '';
-  hint.classList.toggle('show', !!currentObjective);
+  hint.classList.toggle('show', !!(currentObjective && currentObjective.text) && !tutActive());   // the tutorial card replaces the hint line
+  updateTutorial();
+  checkTips();
   $('#upgradeBtn').classList.toggle('alert', anyAffordable() || canFranchise());
   updateMissions();
   checkDecor();
@@ -3090,6 +3192,7 @@ function handleAction(el, act, id) {
     case 'level':
       if (spend(levelCost(id))) {
         state.sec[id].level++;
+        tutEvent('level');
         celebrateLevel(id, MILESTONES.includes(state.sec[id].level));
         showUpgrades();
       }
@@ -3130,6 +3233,9 @@ function handleAction(el, act, id) {
       break;
     }
     case 'breakUp': upgradeBreakRoom(); showUpgrades(); break;
+    case 'tutStart': welcomeName(); state.tut.step = 0; closeModal(); toast('👆 Drag anywhere to move'); save(); break;
+    case 'tutSkipWelcome': welcomeName(); state.tut.step = 99; closeModal(); toast('👆 Drag anywhere to move. Restock shelves and check out shoppers!'); save(); break;
+    case 'tutSkip': state.tut.step = 99; save(); break;
     case 'storeUp': {
       const u = STORE_UP[id];
       if (u && state.expanded && storeLv(id) < u.max && spend(storeUpCost(id))) {
@@ -3222,7 +3328,7 @@ $('#upgradeBtn').addEventListener('click', showUpgrades);
 $('#settingsBtn').addEventListener('click', showSettings);
 $('#missionsBtn').addEventListener('click', () => { updateMissions(); showMissions(); });
 $('#starBtn').addEventListener('click', () => { showStarShop(); $('#modalCard').scrollTop = 0; });
-$('#modal').addEventListener('click', e => { if (e.target.id === 'modal') closeModal(); });
+$('#modal').addEventListener('click', e => { if (e.target.id === 'modal' && state.tut.step >= 0) closeModal(); });   // the welcome card needs an answer
 
 // ---------- Admin tools (for testing) ----------
 const ADMIN_MONEY = 999e9;
@@ -3326,7 +3432,7 @@ resize();
 cam.x = state.player.x; cam.y = state.player.y;
 applyOffline();
 requestAnimationFrame(t => { last = t; frame(t); });
-if (isNewPlayer) toast('👆 Drag anywhere to move. Restock shelves and check out shoppers!');
+if (state.tut.step < 0) showWelcome();
 
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
   navigator.serviceWorker.register('sw.js').catch(() => {});

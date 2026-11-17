@@ -315,3 +315,30 @@ button {
 @keyframes floatUp { from { opacity: 1; margin-top: 0; } to { opacity: 0; margin-top: -60px; } }
 @keyframes toast { 0% { opacity: 0; transform: translateY(-10px); } 10%,85% { opacity: 1; transform: none; } 100% { opacity: 0; } }
 @keyframes fall { to { transform: translateY(110vh) rotate(720deg); } }
+
+/* ---------- First-time tutorial & one-time tips ---------- */
+#tutCard { position: absolute; left: 12px; top: calc(var(--safe-top) + 74px); z-index: 7; width: 214px; padding: 9px 11px 10px;
+  border-radius: 16px; background: rgba(43,35,80,.92); color: #fff; box-shadow: 0 4px 0 rgba(0,0,0,.25); pointer-events: none; display: none; }
+#tutCard.show { display: block; }
+#tutCard .t-head { display: flex; justify-content: space-between; font-size: 11px; font-weight: 700; letter-spacing: .4px; text-transform: uppercase; color: #c9c3e3; }
+#tutCard .t-step { font-size: 15px; font-weight: 700; margin: 4px 0 6px; line-height: 1.2; }
+#tutCard .t-bar { height: 6px; border-radius: 3px; background: rgba(255,255,255,.15); overflow: hidden; }
+#tutCard .t-bar i { display: block; height: 100%; background: #2ecc71; transition: width .4s; }
+#tutCard .t-reward { margin-top: 6px; font-size: 12px; font-weight: 700; color: #ffc83d; }
+#tutCard .t-skip { position: absolute; right: 6px; bottom: 4px; padding: 4px 6px; min-width: 0; width: auto; background: none; box-shadow: none;
+  font: inherit; font-size: 11px; color: #c9c3e3; text-decoration: underline; pointer-events: auto; }
+#tutDone { position: absolute; left: 50%; top: calc(var(--safe-top) + 200px); z-index: 8; padding: 10px 16px; border-radius: 14px;
+  background: #2ecc71; color: #fff; font-weight: 700; font-size: 15px; box-shadow: 0 4px 0 #1e9e55; white-space: nowrap;
+  transform: translateX(-50%); opacity: 0; pointer-events: none; }
+#tutDone.show { animation: tutDone 1.6s ease forwards; }
+@keyframes tutDone { 0% { opacity: 0; transform: translate(-50%, 10px) scale(.9); } 12% { opacity: 1; transform: translate(-50%, 0) scale(1.05); } 20% { transform: translate(-50%, 0) scale(1); } 80% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, -10px); } }
+#upgradeBtn.tut-glow { box-shadow: 0 0 0 4px #ffc83d, 0 0 0 9px rgba(255,200,61,.35), 0 0 24px rgba(255,200,61,.8); animation: pulse 1.2s ease-in-out infinite; }
+#tutBubble { position: absolute; right: 12px; bottom: calc(var(--safe-bottom) + 86px); z-index: 8; max-width: 220px; padding: 10px 13px; border-radius: 14px;
+  background: #fff; color: var(--ink); font-weight: 700; font-size: 14px; box-shadow: 0 4px 0 #d8d0f5, 0 10px 20px rgba(0,0,0,.25); pointer-events: none; display: none; }
+#tutBubble.show { display: block; }
+#tutBubble::after { content: ''; position: absolute; right: 26px; bottom: -9px; border: 10px solid transparent; border-top-color: #fff; border-bottom: 0; }
+/* while the tutorial card is up, toasts and banners sit below it */
+body.tut-on #toasts { top: calc(var(--safe-top) + 250px); }
+body.tut-on #levelBanner { top: calc(var(--safe-top) + 200px); }
+.tip-list { text-align: left; margin: 0 0 6px; padding-left: 0; list-style: none; font-weight: 600; color: var(--ink-soft); }
+.tip-list li { margin: 7px 0; display: flex; gap: 8px; }
