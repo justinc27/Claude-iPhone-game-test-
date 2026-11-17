@@ -3069,7 +3069,7 @@ function showSettings() {
   showModal(`
     <div class="emoji">⚙️</div><h2>Settings</h2>
     <p>Name your store</p>
-    <input id="nameInput" maxlength="24" value="${state.storeName.replace(/"/g, '&quot;')}">
+    <input id="nameInput" maxlength="14" value="${state.storeName.replace(/"/g, '&quot;')}">
     <button class="btn green" data-act="saveName">Save name</button>
     <button class="btn" data-act="toggleSound">Sound: ${state.sound ? 'ON 🔊' : 'OFF 🔇'}</button>
     <button class="btn" data-act="toggleHaptics">Vibration: ${state.haptics ? 'ON 📳' : 'OFF 📴'}</button>
@@ -3151,7 +3151,7 @@ function handleAction(el, act, id) {
     case 'close': closeModal(); break;
     case 'saveName': {
       const v = ($('#nameInput').value || '').trim();
-      if (v) state.storeName = v.slice(0, 24);
+      if (v) state.storeName = v.slice(0, 14);
       save(); closeModal();
       break;
     }
