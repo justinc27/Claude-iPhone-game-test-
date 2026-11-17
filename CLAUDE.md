@@ -110,5 +110,5 @@ The owner noted these as possible future features. Don't build them without the 
 
 - **Branches:** work happens on `claude/amazing-cerf-3ne0f7`. `main` matches the main game link and is only updated when the owner approves.
 - **Preview (current version):** https://claude.ai/artifact/VCpMSXLkPFAvrSx7KqK6fn
-- **Main game link (behind the preview: no save protection, pacing changes, Store upgrades, Store goals, new decorations, upgraded store tiers, store layouts, the Staff Break Room, the new Service Station bench, the new rug, the 14-character store name, the clearer Settings name section, the tutorial and tips or the Service Station arrow fix yet):** https://claude.ai/artifact/Lqefw1KYjppWho31g2y6Tw. Only update it when the owner approves.
+- **Main game link (matches the preview as of the tutorial update):** https://claude.ai/artifact/Lqefw1KYjppWho31g2y6Tw. Only update it when the owner approves.
 - **App Store launch plan (tasks marked "once you approve" need the owner's go-ahead):** https://claude.ai/artifact/8k6aLNkRvTT4W5Qehh69A9
