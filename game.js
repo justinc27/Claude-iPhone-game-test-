@@ -141,33 +141,81 @@ function freshState(keep = {}) {
     lastSeen: Date.now(),
   };
 }
-function load() {
+// ---------- Saving ----------
+// Saves are protected three ways:
+//  1. A backup copy, refreshed once a minute, so a bad save can't wipe progress.
+//  2. A save is only written if it checks out, and a save that won't load is kept aside, never overwritten.
+//  3. In the iPhone app, every save is also mirrored to the app's own storage (Capacitor Preferences),
+//     which iOS doesn't clear the way it can clear a web view's storage.
+const BACKUP_KEY = SAVE_KEY + '_backup', DAMAGED_KEY = SAVE_KEY + '_damaged';
+const BACKUP_EVERY = 60 * 1000;
+let lastBackup = 0;
+function nativePrefs() {
+  try { return (window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.Preferences) || null; } catch (e) { return null; }
+}
+function lsGet(key) { try { return localStorage.getItem(key); } catch (e) { return null; } }
+function lsSet(key, value) { try { localStorage.setItem(key, value); return true; } catch (e) { return false; } }
+// A save is usable if it parses and has the basics a store needs
+function parseSave(raw) {
+  if (!raw) return null;
   try {
-    const raw = localStorage.getItem(SAVE_KEY);
-    if (!raw) return null;
     const s = JSON.parse(raw);
-    const base = freshState(s);
-    const base0 = freshState(s);
-    const merged = Object.assign(base, s);
-    for (const sc of SECTIONS) merged.sec[sc.id] = Object.assign(base.sec[sc.id], (s.sec || {})[sc.id] || {});
-    merged.staff = Object.assign(freshState().staff, s.staff || {});
-    merged.staffPaid = Object.assign(freshState().staffPaid, s.staffPaid || {});
-    merged.staffLv = Object.assign({}, s.staffLv || {});
-    merged.crates = Object.assign(base0.crates, s.crates || {});
-    merged.piles = Array.isArray(s.piles) ? s.piles : [0, 0];
-    return merged;
+    return s && typeof s === 'object' && s.sec && typeof s.sec === 'object' && Number.isFinite(s.money) ? s : null;
   } catch (e) { return null; }
 }
-function save() {
-  state.lastSeen = Date.now();
-  try { localStorage.setItem(SAVE_KEY, JSON.stringify(state)); } catch (e) { /* storage unavailable */ }
+function mergeSave(s) {
+  const base = freshState(s);
+  const base0 = freshState(s);
+  const merged = Object.assign(base, s);
+  for (const sc of SECTIONS) merged.sec[sc.id] = Object.assign(base.sec[sc.id], (s.sec || {})[sc.id] || {});
+  merged.staff = Object.assign(freshState().staff, s.staff || {});
+  merged.staffPaid = Object.assign(freshState().staffPaid, s.staffPaid || {});
+  merged.staffLv = Object.assign({}, s.staffLv || {});
+  merged.crates = Object.assign(base0.crates, s.crates || {});
+  merged.piles = Array.isArray(s.piles) ? s.piles : [0, 0];
+  return merged;
 }
+function load() {
+  const raw = lsGet(SAVE_KEY);
+  const main = parseSave(raw), backup = parseSave(lsGet(BACKUP_KEY));
+  // keep a save that won't load aside instead of letting a new game overwrite it
+  if (raw && !main && !lsGet(DAMAGED_KEY)) lsSet(DAMAGED_KEY, raw);
+  const best = [main, backup].filter(Boolean).sort((a, b) => (b.lastSeen || 0) - (a.lastSeen || 0))[0];
+  if (!best) return null;
+  try { return mergeSave(best); } catch (e) { return null; }
+}
+function save(forceBackup = false) {
+  state.lastSeen = Date.now();
+  let json;
+  try { json = JSON.stringify(state); } catch (e) { return; }
+  if (!parseSave(json)) return;   // never replace a good save with a broken one
+  lsSet(SAVE_KEY, json);
+  if (forceBackup || Date.now() - lastBackup > BACKUP_EVERY) { lsSet(BACKUP_KEY, json); lastBackup = Date.now(); }
+  const prefs = nativePrefs();
+  if (prefs) prefs.set({ key: SAVE_KEY, value: json }).catch(() => {});
+}
+// In the iPhone app: if the app's own storage has a newer save (the web view's storage was cleared), restore it
+function restoreFromNative() {
+  const prefs = nativePrefs();
+  if (!prefs) return;
+  prefs.get({ key: SAVE_KEY }).then(r => {
+    const n = parseSave(r && r.value);
+    if (!n || (loaded && (n.lastSeen || 0) <= (state.lastSeen || 0))) return;
+    if (lsGet(SAVE_KEY + '_restoring') === String(n.lastSeen)) return;   // already tried once: don't loop
+    if (lsSet(SAVE_KEY, r.value) && lsSet(SAVE_KEY + '_restoring', String(n.lastSeen))) location.reload();
+  }).catch(() => {});
+}
+// Ask the browser not to clear the game's storage (helps when it's added to the Home Screen)
+try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {}); } catch (e) { /* not supported */ }
 const loaded = load();
 const isNewPlayer = !loaded;
 let state = loaded || freshState();
 state.money = Math.floor(state.money);
 for (const id in state.sec) state.sec[id].paid = Math.floor(state.sec[id].paid || 0);
 for (const k in state.staffPaid) state.staffPaid[k] = Math.floor(state.staffPaid[k] || 0);
+if (loaded) lsSet(BACKUP_KEY, JSON.stringify(state));   // the save that just loaded fine becomes the backup
+lastBackup = Date.now();
+restoreFromNative();
 if (loaded && [{ x: 300, y: 770, w: 176, h: 90 }, { x: 26, y: 270, w: 548, h: 330 }].some(r => state.player.x > r.x && state.player.x < r.x + r.w && state.player.y > r.y && state.player.y < r.y + r.h)) state.player = { x: 300, y: 640 };
 
 // Runtime-only world objects
@@ -814,7 +862,7 @@ function doFranchise() {
   for (const k in npcs) delete npcs[k];
   truck.phase = 'away'; truckTimer = 30; rushEvent = null;
   rebuildGrid();
-  save(); closeModal(); confetti(); sfx.unlock();
+  save(true); closeModal(); confetti(); sfx.unlock();
   toast(`⭐ Welcome to your new ${theme().name}! Profit x${starMult().toFixed(2)}`);
 }
 
@@ -2480,7 +2528,7 @@ function handleAction(el, act, id) {
       customers = []; queues = [[], []]; fx = []; buildProgress = 0;
       for (const k in npcs) delete npcs[k];
       rebuildGrid();
-      save(); closeModal();
+      save(true); closeModal();
       break;
   }
 }

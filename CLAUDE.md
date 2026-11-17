@@ -33,7 +33,12 @@ Monetization decided by the owner (not built yet): rewarded ads plus occasional 
 
 - **Saved vs. temporary state.**
   - Everything saved lives on the global `state` object, created by `freshState(keep)`. `keep` carries what survives a Franchise.
-  - Saved under the `localStorage` key `pcPartsTycoon_store_v2`, with nested objects merged with defaults in `load()`. A new saved field needs a default in `freshState()` and, if nested, merging in `load()`.
+  - Saved under the `localStorage` key `pcPartsTycoon_store_v2`, with nested objects merged with defaults in `mergeSave()`. A new saved field needs a default in `freshState()` and, if nested, merging in `mergeSave()`.
+  - Save protection:
+    - `save()` only writes a save that passes `parseSave()`.
+    - It refreshes a backup (`_backup` key) once a minute and on Franchise, reset and `pagehide`.
+    - `load()` uses whichever of the main save and the backup is newer, and keeps a save that won't load under `_damaged` instead of overwriting it.
+    - In the Capacitor app, every save is also mirrored to the Preferences plugin, and `restoreFromNative()` brings it back if the web view's storage was cleared. Install `@capacitor/preferences` when wrapping the app.
   - Temporary objects are rebuilt on every load: `customers`, `queues`, `fx`, `npcs`, `truck`, `rushEvent`, `buildProgress`. Reset (`confirmReset` in `handleAction`) and Franchise (`doFranchise`) must clear these and call `rebuildGrid()`.
 - **The game loop.**
   - Each frame, `frame()` runs `update(dt, i === 0)` once per admin game-speed step; the player moves only on the first step.
@@ -90,11 +95,11 @@ The owner noted these as possible future features. Don't build them without the 
 - **Font:** Fredoka is bundled in `fonts/` (Latin and Latin Extended subsets, `woff2`) under the SIL Open Font License; keep `fonts/OFL.txt` with it. The game loads no outside files.
 
 - **Preview link:** a single HTML file. `style.css` and `game.js` are copied into the page, the bundled font files in `fonts/` are embedded in the CSS as `data:` URLs (the font preload link is dropped), and the service-worker registration at the end of `game.js` is removed. Previews and the main link each keep their own save.
-- **Service worker:** `sw.js` serves cached files and refreshes them in the background. Change its cache name (currently `pc-tycoon-v5`) when shipping changed files, so the installed app picks them up.
+- **Service worker:** `sw.js` serves cached files and refreshes them in the background. Change its cache name (currently `pc-tycoon-v6`) when shipping changed files, so the installed app picks them up.
 
 ## Where things are
 
 - **Branches:** work happens on `claude/amazing-cerf-3ne0f7`. `main` matches the main game link and is only updated when the owner approves.
 - **Preview (current version):** https://claude.ai/artifact/VCpMSXLkPFAvrSx7KqK6fn
-- **Main game link (same version as the preview since Nov 16, 2026):** https://claude.ai/artifact/Lqefw1KYjppWho31g2y6Tw. Only update it when the owner approves.
+- **Main game link (behind the preview: no save protection yet):** https://claude.ai/artifact/Lqefw1KYjppWho31g2y6Tw. Only update it when the owner approves.
 - **App Store launch plan (tasks marked "once you approve" need the owner's go-ahead):** https://claude.ai/artifact/8k6aLNkRvTT4W5Qehh69A9
