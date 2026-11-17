@@ -52,7 +52,6 @@ const CRATE_W = 84, CRATE_H = 64;
 const LOOP = [{ x: 105, y: 1000 }, { x: 130, y: 680 }, { x: 130, y: 300 }, { x: 470, y: 300 }, { x: 470, y: 700 }];
 const LOOP_CUM = [0];
 for (let i = 1; i < LOOP.length; i++) LOOP_CUM.push(LOOP_CUM[i - 1] + Math.hypot(LOOP[i].x - LOOP[i - 1].x, LOOP[i].y - LOOP[i - 1].y));
-const S_END = LOOP_CUM[LOOP_CUM.length - 1];
 const ENTRANCE = { x: 40, w: 130 }, EXIT = { x: 430, w: 130 };
 // Open-floor spots where shoppers stop to look around
 const WANDER_SPOTS = [
@@ -69,7 +68,7 @@ const REG = [{ x: 362, y: 815 }, { x: 502, y: 815 }];   // stand here to check p
 const LANE_X = [278, 418];
 function queueSlot(lane, i) {
   const col = Math.floor(i / 6), row = i % 6;
-  return { x: LANE_X[lane] - col * 40, y: 815 - row * 44 };
+  return { x: LANE_X[lane] - col * 40, y: REG[lane].y - row * 44 };
 }
 const REG_RADIUS = 30;
 // Cash from sales stacks up here until you walk over and collect it
@@ -232,7 +231,6 @@ for (const k in state.staffPaid) state.staffPaid[k] = Math.floor(state.staffPaid
 if (loaded) lsSet(BACKUP_KEY, JSON.stringify(state));   // the save that just loaded fine becomes the backup
 lastBackup = Date.now();
 restoreFromNative();
-if (loaded && [{ x: 300, y: 770, w: 176, h: 90 }, { x: 26, y: 270, w: 548, h: 330 }].some(r => state.player.x > r.x && state.player.x < r.x + r.w && state.player.y > r.y && state.player.y < r.y + r.h)) state.player = { x: 300, y: 640 };
 
 // Runtime-only world objects
 let customers = [];
@@ -483,6 +481,120 @@ function checkDecor(silent = false) {
     toast(`🎨 New decoration: ${d.name}!`);
   }
 }
+// ---------- Store layouts: each new store (Franchise) gets its own floor plan ----------
+// Shelves are [x, y, w, h]. faces: the sides of a shelf people stand at (n, s, e, w); the first is where
+// the stocker restocks and where its unlock pad goes (unless pads gives a spot). The Service Station,
+// checkout, queues, piles and pads are placed from these. The stockroom and doors are the same everywhere.
+const LAYOUTS = [
+  { name: 'The Loop',
+    shelves: { acc: [26, 270, 40, 330], case: [534, 270, 40, 330], mon: [200, 345, 200, 42], gpu: [200, 465, 200, 42], cpu: [660, 300, 200, 42], ram: [660, 470, 200, 42], chair: [660, 640, 200, 42] },
+    faces: { acc: 'e', case: 'w', mon: 'ns', gpu: 'sn', cpu: 'ns', ram: 'ns', chair: 'ns' },
+    pads: { acc: [120, 435], case: [478, 435], mon: [300, 313], gpu: [300, 548], cpu: [760, 372], ram: [760, 542], chair: [760, 712] },
+    bench: [210, 200, 180, 40], checkout: [300, 440, 770], cashierPad: [222, 900], expansionPad: [540, 690],
+    div: [[588, 260, 24, 350], [588, 780, 24, 224]], rug: [208, 581], planks: [236, 736, 350, 268],
+    loop: [[105, 1000], [130, 680], [130, 300], [470, 300], [470, 700]],
+    wander: [[160, 255], [440, 255], [230, 426], [300, 426], [370, 426], [130, 450], [470, 450], [200, 630], [300, 610], [420, 640], [250, 700], [160, 800], [920, 300], [920, 560], [760, 800], [700, 210]],
+    decor: {} },
+  { name: 'Twin Aisles',
+    shelves: { acc: [26, 270, 40, 330], case: [534, 270, 40, 330], mon: [190, 320, 40, 250], gpu: [370, 320, 40, 250], cpu: [680, 270, 40, 290], ram: [860, 270, 40, 290], chair: [670, 660, 240, 42] },
+    faces: { acc: 'e', case: 'w', mon: 'we', gpu: 'ew', cpu: 'ew', ram: 'we', chair: 'ns' },
+    pads: {},
+    bench: [210, 200, 180, 40], checkout: [300, 440, 770], cashierPad: [222, 900], expansionPad: [540, 690],
+    div: [[588, 260, 24, 350], [588, 780, 24, 224]], rug: [208, 620], planks: [236, 736, 350, 268],
+    loop: [[105, 1000], [120, 640], [120, 250], [300, 250], [300, 600], [480, 600], [480, 250]],
+    decor: { arcade: [955, 760], gpusign: [110, 690] } },
+  { name: 'Wall Displays',
+    shelves: { acc: [26, 250, 40, 350], case: [534, 250, 40, 350], mon: [130, 320, 340, 42], gpu: [190, 470, 220, 80], cpu: [650, 240, 290, 42], ram: [934, 320, 40, 300], chair: [670, 450, 190, 80] },
+    faces: { acc: 'e', case: 'w', mon: 'sn', gpu: 'ns', cpu: 'sn', ram: 'w', chair: 'ns' },
+    pads: { ram: [880, 380] },
+    bench: [210, 200, 180, 40], checkout: [230, 370, 770], cashierPad: [500, 900], expansionPad: [540, 690],
+    div: [[588, 260, 24, 350], [588, 780, 24, 224]], rug: [208, 590], planks: [186, 736, 350, 268],
+    loop: [[105, 1000], [130, 680], [130, 300], [470, 300], [470, 700]],
+    decor: { arcade: [955, 700], gpusign: [110, 690] } },
+  { name: 'Long Rows',
+    shelves: { case: [26, 300, 40, 330], acc: [140, 330, 390, 36], mon: [140, 435, 390, 36], gpu: [140, 540, 390, 36], cpu: [650, 330, 300, 36], ram: [650, 435, 300, 36], chair: [650, 540, 300, 36] },
+    faces: { case: 'e', acc: 'ns', mon: 'ns', gpu: 'ns', cpu: 'ns', ram: 'ns', chair: 'ns' },
+    pads: { case: [120, 690] },
+    bench: [210, 200, 180, 40], checkout: [300, 440, 770], cashierPad: [222, 900], expansionPad: [540, 690],
+    div: [[588, 160, 24, 150], [588, 640, 24, 364]], rug: [208, 630], planks: [236, 736, 350, 268],
+    loop: [[105, 1000], [100, 680], [100, 300], [560, 300], [560, 700]],
+    decor: { arcade: [955, 720], gpusign: [100, 745], planter1: [46, 660] } },
+  { name: 'Build Bar Centre',
+    shelves: { acc: [26, 270, 40, 330], case: [534, 270, 40, 330], mon: [130, 250, 340, 42], gpu: [130, 495, 340, 42], cpu: [660, 250, 280, 42], ram: [660, 400, 280, 42], chair: [660, 640, 280, 42] },
+    faces: { acc: 'e', case: 'w', mon: 'sn', gpu: 's', cpu: 'sn', ram: 'sn', chair: 'sn' },
+    pads: {},
+    bench: [210, 385, 180, 40], checkout: [300, 440, 770], cashierPad: [222, 900], expansionPad: [540, 690],
+    div: [[588, 230, 24, 330], [588, 780, 24, 224]], rug: [208, 600], planks: [236, 736, 350, 268],
+    loop: [[105, 1000], [130, 680], [130, 300], [470, 300], [470, 700]],
+    decor: { arcade: [962, 540], gpusign: [110, 690] } },
+];
+// The decorations' spots in the first layout, so other layouts can move them
+for (const d of DECOR_ITEMS) { d.home = { x: d.x, y: d.y }; if (d.rect) d.rectHome = { ...d.rect }; }
+let appliedLayout = -1;
+function layoutTier() { return Math.min(state.franchises, LAYOUTS.length - 1); }
+function curLayout() { return LAYOUTS[Math.max(0, appliedLayout)]; }
+// A spot beside a shelf: on side f, k of the way along it, d units out from it
+function faceSpot(r, f, k, d) {
+  if (f === 'n') return { x: r.x + r.w * k, y: r.y - d };
+  if (f === 's') return { x: r.x + r.w * k, y: r.y + r.h + d };
+  if (f === 'w') return { x: r.x - d, y: r.y + r.h * k };
+  return { x: r.x + r.w + d, y: r.y + r.h * k };
+}
+function setXY(o, x, y) { o.x = x; o.y = y; }
+function applyLayout(t) {
+  const L = LAYOUTS[t];
+  for (const s of PARTS) {
+    const [x, y, w, h] = L.shelves[s.id];
+    Object.assign(s.shelf, { x, y, w, h });
+    s.faces = L.faces[s.id].split('');
+    s.stockSpot = faceSpot(s.shelf, s.faces[0], 0.5, 26);
+    const f = s.faces[0], pd = L.pads[s.id];
+    s.pad = pd ? { x: pd[0], y: pd[1] } : faceSpot(s.shelf, f, 0.5, f === 'e' || f === 'w' ? 54 : 40);
+  }
+  const b = SEC.svc.bench;
+  [b.x, b.y, b.w, b.h] = L.bench;
+  setXY(SEC.svc.workPad, b.x + 42, b.y + 74);
+  setXY(SEC.svc.custSpot, b.x + 138, b.y + 72);
+  SEC.svc.pad = { x: b.x + 90, y: b.y + 72 };
+  setXY(BENCH_PILE, b.x + b.w + 26, b.y + 32);
+  const [c0, c1, cy] = L.checkout;
+  [c0, c1].forEach((cx, l) => {
+    setXY(COUNTERS[l], cx, cy);
+    setXY(REG[l], cx + 62, cy + 45);
+    LANE_X[l] = cx - 22;
+    setXY(PILE_SPOTS[l], cx + 18, cy + 80);
+  });
+  for (const k of ['cashier', 'cashier2']) setXY(HIRE_PADS[k], L.cashierPad[0], L.cashierPad[1]);
+  setXY(EXPANSION.pad, L.expansionPad[0], L.expansionPad[1]);
+  DIVIDER_OPEN.length = 0;
+  for (const [x, y, w, h] of L.div) DIVIDER_OPEN.push({ x, y, w, h });
+  LOOP.length = 0; LOOP_CUM.length = 0; LOOP_CUM.push(0);
+  for (const [x, y] of L.loop) LOOP.push({ x, y });
+  for (let i = 1; i < LOOP.length; i++) LOOP_CUM.push(LOOP_CUM[i - 1] + dist(LOOP[i], LOOP[i - 1]));
+  for (const d of DECOR_ITEMS) {
+    if (!d.home || d.home.x === undefined) continue;
+    const to = L.decor[d.id] || [d.home.x, d.home.y], dx = to[0] - d.home.x, dy = to[1] - d.home.y;
+    setXY(d, to[0], to[1]);
+    if (d.rect) setXY(d.rect, d.rectHome.x + dx, d.rectHome.y + dy);
+  }
+  WANDER_SPOTS.length = 0;
+  for (const [x, y] of L.wander || autoWander(L)) WANDER_SPOTS.push({ x, y });
+  appliedLayout = t;
+}
+// Open-floor spots for shoppers to stop and look around: clear of furniture and the checkout lines
+function autoWander(L) {
+  const solid = [...PARTS.map(s => s.shelf), SEC.svc.bench, ...COUNTERS, ...DIVIDER_OPEN, ...DECOR_RECTS];
+  const [c0, c1, cy] = L.checkout;
+  const out = [];
+  for (let y = 210; y <= 900; y += 70) for (let x = 80; x <= 940; x += 70) {
+    const p = { x, y };
+    if (x > 560 && x < 640) continue;
+    if (x > c0 - 90 && x < c1 + 100 && y > cy - 230) continue;
+    if (solid.some(r => inRect(p, r, 36))) continue;
+    out.push([x, y]);
+  }
+  return out.filter((_, i) => i % 2 === 0);
+}
 // For shoppers & staff: is a straight walk blocked by furniture?
 function segmentBlocked(a, b) {
   const steps = Math.ceil(dist(a, b) / 8);
@@ -496,6 +608,7 @@ function segmentBlocked(a, b) {
 const CELL = 20, GW = Math.ceil(W_FULL / CELL), GH = Math.ceil(H / CELL);
 const blockedCell = new Uint8Array(GW * GH);
 function rebuildGrid() {
+  if (layoutTier() !== appliedLayout) applyLayout(layoutTier());
   FURNITURE = [...COUNTERS, ...DECOR_RECTS, ...stockWallRects(), SEC.svc.bench, ...PARTS.map(s => s.shelf), ...(state.expanded ? DIVIDER_OPEN : DIVIDER_CLOSED)];
   const ww = worldW();
   for (let gy = 0; gy < GH; gy++) for (let gx = 0; gx < GW; gx++) {
@@ -504,6 +617,8 @@ function rebuildGrid() {
   }
 }
 rebuildGrid();
+// a save from before this store's layout might have you standing inside a shelf
+if (loaded && obstacles().some(r => inRect(state.player, r, 4))) state.player = { x: 300, y: 640 };
 function gridPath(from, to) {
   const cl = v => Math.max(0, Math.min(v, 1e9));
   const sx = Math.min(GW - 1, Math.floor(cl(from.x) / CELL)), sy = Math.min(GH - 1, Math.floor(cl(from.y) / CELL));
@@ -577,16 +692,14 @@ const HAIR = ['#2b1d0e', '#6b3e1b', '#e8c170', '#111', '#b5542b', '#999'];
 const PANTS = ['#2b2350', '#3d5a80', '#5c4033', '#4a4e69', '#264653', '#6d597a'];
 // Where a shopper stands to grab something from a section
 function makeStop(id) {
-  const r = Math.random(), side = Math.random() < 0.5;
+  const s = SEC[id];
   let spot;
-  if (id === 'acc') spot = { x: 94, y: 290 + r * 290 };
-  else if (id === 'case') spot = { x: 506, y: 290 + r * 290 };
-  else if (id === 'mon') spot = { x: 215 + r * 170, y: side ? 321 : 413 };   // in front, or from the middle aisle
-  else if (id === 'gpu') spot = { x: 215 + r * 170, y: side ? 533 : 439 };
-  else if (id === 'cpu') spot = { x: 675 + r * 170, y: side ? 276 : 366 };
-  else if (id === 'ram') spot = { x: 675 + r * 170, y: side ? 446 : 536 };
-  else if (id === 'chair') spot = { x: 675 + r * 170, y: side ? 616 : 706 };
-  else spot = { ...SEC.svc.custSpot };
+  if (s.shelf) {
+    // any side of the shelf people can reach, somewhere along it
+    const r = s.shelf, f = s.faces[Math.floor(Math.random() * s.faces.length)];
+    const len = f === 'e' || f === 'w' ? r.h : r.w, edge = f === 'e' || f === 'w' ? 20 : 15;
+    spot = faceSpot(r, f, (edge + Math.random() * (len - 2 * edge)) / len, 25);
+  } else spot = { ...SEC.svc.custSpot };
   return { id, spot, s: loopS(spot) };
 }
 // Walk to a target, sometimes stopping somewhere on the floor to look around first
@@ -638,7 +751,8 @@ function leave(c, mood) {
   c.mood = mood;
   c.moodT = 0;
   c.pauseT = 0;
-  if (wasQueued) c.path = [{ x: c.x, y: 900 }, { x: 495, y: 960 }, { x: 495, y: H + 30 }];
+  const ex = EXIT.x + EXIT.w / 2;
+  if (wasQueued) c.path = [{ x: c.x, y: COUNTERS[0].y + 130 }, { x: ex, y: 960 }, { x: ex, y: H + 30 }];
   else c.path = [...route(c, EXIT_PATH[0]), ...EXIT_PATH.slice(1).map(p => ({ ...p }))];
   if (mood === 'sad') sfx.sad();
 }
@@ -820,10 +934,10 @@ function updateService(dt) {
 // ---------- Franchise (prestige) ----------
 const STAR_BONUS = 0.05;   // +5% profit per Star
 // Each new store is a step up: floor, walls, shelves and checkout counters get fancier.
-// floor: concrete | tile | bigtile | marble | showroom; walls: block | brick | trim | neon
+// floor: vinyl | tile | bigtile | marble | showroom (concrete is unused); walls: plain | block | brick | trim | neon
 // counter: plywood | wood | laminate | glass | black; shelf: wood | paint | gloss | metal | glow
 const THEMES = [
-  { name: 'Garage Shop', floor: 'concrete', a: '#e2dfd8', b: '#d8d4cc', wall: '#5b6170', walls: 'block', counter: 'plywood', shelf: 'wood', planks: null },
+  { name: 'Small Store', floor: 'vinyl', a: '#eef0f2', b: '#c9ced6', wall: '#4f6b8a', walls: 'plain', counter: 'plywood', shelf: 'wood', planks: null },
   { name: 'Strip Mall', floor: 'tile', a: '#f4f1ff', b: '#e9e4fb', wall: '#3b2a7a', walls: 'brick', counter: 'wood', shelf: 'paint' },
   { name: 'Shopping Mall', floor: 'bigtile', a: '#fff7ec', b: '#f5e9d6', wall: '#7a3f2a', walls: 'trim', trim: '#f0c987', counter: 'laminate', shelf: 'gloss' },
   { name: 'Megastore', floor: 'marble', a: '#f4f5f8', b: '#e9ebf0', wall: '#24324a', walls: 'trim', trim: '#d9b45a', counter: 'glass', shelf: 'metal', planks: ['#8f5d3b', '#9a6642'], plankInk: '#ffe9cf' },
@@ -1294,9 +1408,9 @@ function updateStocker(dt) {
     if (crateEmpty && !n.carry.length) { n.job = 'idle'; n.timer = 0; return; }
     if (n.carry.length >= want || crateEmpty) {
       n.job = 'unload'; n.timer = 0;
-      const f = SEC[n.target].stockSpot;
-      const vert = SEC[n.target].shelf.h > SEC[n.target].shelf.w;
-      n.path = route(n, vert ? { x: f.x, y: f.y + (Math.random() * 160 - 80) } : { x: f.x + (Math.random() * 120 - 60), y: f.y });
+      const sh = SEC[n.target].shelf, face = SEC[n.target].faces[0];
+      const len = face === 'e' || face === 'w' ? sh.h : sh.w, spread = Math.min(80, len * 0.3);
+      n.path = route(n, faceSpot(sh, face, 0.5 + (Math.random() * 2 - 1) * spread / len, 26));
     }
   } else if (n.job === 'unload') {
     const st = state.sec[n.target];
@@ -1622,12 +1736,14 @@ function buildFloor() {
   edge(0, H - 16, 0, H - 48, W_FULL, 32);
   edge(16, 0, 48, 0, 32, H);
   edge(W_FULL - 16, 0, W_FULL - 48, 0, 32, H);
-  // wooden plank floor in the checkout area (the Garage Shop is bare concrete)
-  if (T.planks !== null) drawPlanks(236, 736, 350, 268, T.planks);
+  // wooden plank floor in the checkout area (the Small Store has none)
+  const LY = curLayout();
+  if (T.planks !== null) drawPlanks(...LY.planks, T.planks);
   // store-logo rug in the open floor
-  rr(208, 581, 184, 68, 34); ctx.fillStyle = '#4a2f9e'; ctx.fill();
-  rr(214, 587, 172, 56, 28); ctx.strokeStyle = '#ffc83d'; ctx.lineWidth = 2.5; ctx.setLineDash([6, 4]); ctx.stroke(); ctx.setLineDash([]);
-  text(state.storeName.toUpperCase().slice(0, 14), 310, 616, 15, '#fff');
+  const [RX, RY] = LY.rug;
+  rr(RX, RY, 184, 68, 34); ctx.fillStyle = '#4a2f9e'; ctx.fill();
+  rr(RX + 6, RY + 6, 172, 56, 28); ctx.strokeStyle = '#ffc83d'; ctx.lineWidth = 2.5; ctx.setLineDash([6, 4]); ctx.stroke(); ctx.setLineDash([]);
+  text(state.storeName.toUpperCase().slice(0, 14), RX + 102, RY + 35, 15, '#fff');
   // shadows under the furniture that's in the store
   for (const r of COUNTERS) softShadow(r, 9);
   for (const s of PARTS) if (state.sec[s.id].unlocked) softShadow(s.shelf);
@@ -1701,6 +1817,15 @@ function drawFloorSurface(T) {
       let x = 16 + rnd() * W_FULL, y = 180 + rnd() * (H - 200); ctx.moveTo(x, y);
       for (let j = 0; j < 4; j++) { x += (rnd() - 0.3) * 26; y += (rnd() - 0.5) * 26; ctx.lineTo(x, y); }
     }
+    ctx.stroke();
+    return;
+  }
+  if (T.floor === 'vinyl') {
+    // small vinyl checker tiles with a few scuffs
+    for (let y = 16; y < H; y += 30) for (let x = 16; x < W_FULL; x += 30) { ctx.fillStyle = ((x + y) / 30) % 2 === 0 ? T.a : T.b; ctx.fillRect(x, y, 30, 30); }
+    const rnd = seeded(5);
+    ctx.strokeStyle = 'rgba(60,60,70,.10)'; ctx.lineWidth = 1.2; ctx.beginPath();
+    for (let k = 0; k < 60; k++) { const x = 16 + rnd() * W_FULL, y = 16 + rnd() * H; ctx.moveTo(x, y); ctx.quadraticCurveTo(x + 6, y - 4, x + 10 + rnd() * 14, y + (rnd() - 0.5) * 6); }
     ctx.stroke();
     return;
   }
@@ -1985,7 +2110,7 @@ function drawShelf(s) {
   ctx.font = '700 11px Fredoka, ui-rounded, system-ui, sans-serif';
   const lw = ctx.measureText(label).width + 20;
   const lx = Math.max(20 + lw / 2, Math.min(W_FULL - 20 - lw / 2, r.x + r.w / 2));
-  const ly = s.id === 'gpu' ? r.y + r.h + 22 : r.y - 14;
+  const ly = !vert && s.faces && s.faces[0] === 's' ? r.y + r.h + 22 : r.y - 14;   // the sign goes on the side people shop from
   const sp = signPopAt[s.id] !== undefined ? time - signPopAt[s.id] : 9;
   const ss = sp < 0.4 ? 1 + 0.25 * Math.sin(sp / 0.4 * Math.PI) : 1;
   ctx.save(); ctx.translate(lx, ly); ctx.scale(ss, ss); ctx.translate(-lx, -ly);
@@ -2027,7 +2152,7 @@ function drawCashPile(spot, amount) {
 }
 function drawCheckout() {
   const T = theme(), ink = T.plankInk || '#7a4b1e';
-  text('CHECKOUT', 390, 892, 13, ink);
+  text('CHECKOUT', COUNTERS[0].x + 90, COUNTERS[0].y + 122, 13, ink);
   for (let l = 0; l < 2; l++) {
     const r = COUNTERS[l], reg = REG[l];
     const here = dist(state.player, reg) < REG_RADIUS;

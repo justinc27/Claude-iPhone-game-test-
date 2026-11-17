@@ -16,7 +16,7 @@ PC Parts Tycoon is a top-down idle tycoon game for iPhone, written in plain HTML
 
 Main systems, all in `game.js`:
 
-- **Store layout ("Racetrack Loop"):** the stockroom is across the top, and the Service Station is below it. Accessories and PC Cases are on the side walls; Monitors and Graphics Cards are on a centre island with a walkable aisle between them. There are 2 checkout lanes, an entrance at bottom-left and an exit at bottom-right. An expansion wing (x 600–1000) holds CPUs, RAM & Storage and Gaming Chairs.
+- **Store layouts:** each store tier has its own floor plan (`LAYOUTS`, applied by `applyLayout` from `rebuildGrid` whenever the tier changes): The Loop (Small Store), Twin Aisles (Strip Mall), Wall Displays (Shopping Mall), Long Rows (Megastore) and Build Bar Centre (Flagship and later). The stockroom, its doors, the entrance and exit are the same in all of them, and the Service Station stays in the main room because it unlocks before the wing opens. The first layout, The Loop, is described next: the stockroom is across the top, and the Service Station is below it. Accessories and PC Cases are on the side walls; Monitors and Graphics Cards are on a centre island with a walkable aisle between them. There are 2 checkout lanes, an entrance at bottom-left and an exit at bottom-right. An expansion wing (x 600–1000) holds CPUs, RAM & Storage and Gaming Chairs.
 - **Sections:** these unlock in order (`SECTIONS` table: prices, unlock costs, shelf and crate positions). Leveling a section up raises its item price.
 - **Staff:** two cashiers, a stocker and a tech, each with upgrades (`STAFF`, `STAFF_UPGRADES`). Staff can be hired on floor pads or in the Upgrades menu.
 - **Stockroom:** stock is limited. A delivery truck refills the crates. Crates sit at `CRATE_Y`, near the back wall, leaving a marked walkway in front of them where nothing is picked up; you pick up by stepping onto a crate.
@@ -26,7 +26,7 @@ Main systems, all in `game.js`:
 - **Rush events:** a timed event happens every few minutes (`EVENTS`).
 - **Missions:** daily missions and achievements (`ACHIEVEMENTS`; an achievement gives a Star).
 - **Store upgrades and Store goals:** after expanding, the Upgrades menu offers Advertising, Premium Displays and Pro Repair Kits (`STORE_UPGRADES`, 5 levels each). The Missions panel has Store goals with cash rewards (`GOALS`, scaled by `goalReward`). Both are per-store (`storeUp`, `goalsDone`, `goalsClaimed`, `storeServed`, `storeBuilt`) and reset on Franchise.
-- **Franchise:** the prestige reset. It needs all 8 sections open, a Star to claim, and a fee of $1.5M that grows x4 per Franchise (`FRANCHISE_BASE`, `FRANCHISE_GROWTH`, `canFranchise`). Stars give +5% to prices. Each new store is a visible step up (`THEMES`, read through `themeFor(n)`): Garage Shop → Strip Mall → Shopping Mall → Megastore → Flagship Store. The floor (`drawFloorSurface`), walls (`drawWallFace`, `wallTrim`), shelves (`shelfBody`) and checkout counters (`counterBody`) change style per tier; stores after the Flagship keep its look with a new neon colour (`FLAGSHIP_ACCENTS`).
+- **Franchise:** the prestige reset. It needs all 8 sections open, a Star to claim, and a fee of $1.5M that grows x4 per Franchise (`FRANCHISE_BASE`, `FRANCHISE_GROWTH`, `canFranchise`). Stars give +5% to prices. Each new store is a visible step up (`THEMES`, read through `themeFor(n)`) with its own layout: Small Store → Strip Mall → Shopping Mall → Megastore → Flagship Store. The floor (`drawFloorSurface`), walls (`drawWallFace`, `wallTrim`), shelves (`shelfBody`) and checkout counters (`counterBody`) change style per tier; stores after the Flagship keep its look with a new neon colour (`FLAGSHIP_ACCENTS`).
 - **Admin tools:** Settings → Admin tools, for testing only (unlimited money, game speed, shortcuts). They must be hidden or removed before an App Store release.
 
 Monetization decided by the owner (not built yet): rewarded ads plus occasional full-screen ads (AdMob), and a $3.99 Remove Ads purchase that also grants rewarded bonuses without watching. See the launch plan.
@@ -51,6 +51,10 @@ Monetization decided by the owner (not built yet): rewarded ads plus occasional 
   - The store is 1000×1020 world units (`W_FULL`, `H`), but only 600 wide until it's expanded (`worldW()`).
   - The delivery road sits above y = 0, and the camera's view always reaches it, behind the see-through top bar.
   - The camera follows the player, with zoom based on `VIEW_UNITS`.
+- **Layouts.**
+  - A layout lists each shelf's rect and `faces` (the sides people stand at; the first is where the stocker restocks and the unlock pad goes, unless `pads` gives a spot), plus the Service Station bench, checkout, cashier pad, expansion pad, middle-wall openings, rug, checkout floor, shopper `loop` and decoration moves.
+  - `applyLayout` changes the shared objects in place (`SECTIONS` shelves, `COUNTERS`, `REG`, `LANE_X`, `PILE_SPOTS`, `HIRE_PADS`, `DIVIDER_OPEN`, `LOOP`, `WANDER_SPOTS`, decoration spots) and derives the rest: stock spots, pads, the Service Station's work circle and customer spot, and shopper stops (`makeStop` uses `faceSpot`). Layouts without a `wander` list get one from `autoWander`.
+  - When adding a layout, check that every shelf side, queue slot and pad is reachable and clear of furniture, and that queue slots (which run 220 units up from the registers) don't hit a shelf.
 - **Movement and pathfinding.**
   - The player collides only with `obstacles()`, which is unlocked furniture.
   - Shoppers and staff use `route(from, to)`: a straight line unless `segmentBlocked`, otherwise a grid search (`gridPath`) over `FURNITURE`, with corners straightened.
@@ -97,11 +101,11 @@ The owner noted these as possible future features. Don't build them without the 
 - **Font:** Fredoka is bundled in `fonts/` (Latin and Latin Extended subsets, `woff2`) under the SIL Open Font License; keep `fonts/OFL.txt` with it. The game loads no outside files.
 
 - **Preview link:** a single HTML file. `style.css` and `game.js` are copied into the page, the bundled font files in `fonts/` are embedded in the CSS as `data:` URLs (the font preload link is dropped), and the service-worker registration at the end of `game.js` is removed. Previews and the main link each keep their own save.
-- **Service worker:** `sw.js` serves cached files and refreshes them in the background. Change its cache name (currently `pc-tycoon-v11`) when shipping changed files, so the installed app picks them up.
+- **Service worker:** `sw.js` serves cached files and refreshes them in the background. Change its cache name (currently `pc-tycoon-v12`) when shipping changed files, so the installed app picks them up.
 
 ## Where things are
 
 - **Branches:** work happens on `claude/amazing-cerf-3ne0f7`. `main` matches the main game link and is only updated when the owner approves.
 - **Preview (current version):** https://claude.ai/artifact/VCpMSXLkPFAvrSx7KqK6fn
-- **Main game link (behind the preview: no save protection, pacing changes, Store upgrades, Store goals, new decorations or upgraded store tiers yet):** https://claude.ai/artifact/Lqefw1KYjppWho31g2y6Tw. Only update it when the owner approves.
+- **Main game link (behind the preview: no save protection, pacing changes, Store upgrades, Store goals, new decorations, upgraded store tiers or store layouts yet):** https://claude.ai/artifact/Lqefw1KYjppWho31g2y6Tw. Only update it when the owner approves.
 - **App Store launch plan (tasks marked "once you approve" need the owner's go-ahead):** https://claude.ai/artifact/8k6aLNkRvTT4W5Qehh69A9
