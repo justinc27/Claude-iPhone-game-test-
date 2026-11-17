@@ -3067,15 +3067,22 @@ function showModal(html, sheet = false) {
 function closeModal() { $('#modal').classList.add('hidden'); }
 function showSettings() {
   showModal(`
-    <div class="emoji">⚙️</div><h2>Settings</h2>
-    <p>Name your store</p>
-    <input id="nameInput" maxlength="14" value="${state.storeName.replace(/"/g, '&quot;')}">
-    <button class="btn green" data-act="saveName">Save name</button>
+    <div class="emoji small">⚙️</div><h2>Settings</h2>
+    <div class="name-card">
+      <div class="lbl">🏪 Your store's name</div>
+      <div class="sub">Shown on the rug in your store and at the top of the screen</div>
+      <div class="name-field"><input id="nameInput" maxlength="14" value="${state.storeName.replace(/"/g, '&quot;')}"><span class="count" id="nameCount">${state.storeName.length}/14</span><span class="pen">✏️</span></div>
+      <button class="btn green" data-act="saveName">Save name</button>
+    </div>
+    <div class="set-group">Game</div>
     <button class="btn" data-act="toggleSound">Sound: ${state.sound ? 'ON 🔊' : 'OFF 🔇'}</button>
     <button class="btn" data-act="toggleHaptics">Vibration: ${state.haptics ? 'ON 📳' : 'OFF 📴'}</button>
     <button class="btn" data-act="admin">🛠️ Admin tools (testing)</button>
     <button class="btn danger" data-act="askReset">Reset all progress</button>
     <button class="btn disabled" data-act="close">Close</button>`);
+  // the character count follows what you type
+  const inp = $('#nameInput'), cnt = $('#nameCount');
+  if (inp && cnt) inp.addEventListener('input', () => { cnt.textContent = `${inp.value.length}/14`; });
 }
 
 function handleAction(el, act, id) {

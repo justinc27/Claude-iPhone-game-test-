@@ -22,7 +22,7 @@ Main systems, all in `game.js`:
 - **Stockroom:** stock is limited. A delivery truck refills the crates. Crates sit at `CRATE_Y`, near the back wall, leaving a marked walkway in front of them where nothing is picked up; you pick up by stepping onto a crate.
 - **Cash piles:** staff sales stack up on the counters and the bench until the player collects them.
 - **Service Station jobs:** Repair, Upgrade and Full Build (`JOBS`). Upgrades and builds need parts: standing in the work circle pulls them from stock (the shelf first, then the stockroom crate), or the player can bring boxes to the bench. The bench (`benchBody`) has a charcoal frame and light grey top (black with the store's neon edge in the Flagship), and gains gear at the section's milestones (`benchGear`): an anti-static mat at Lv 10, a magnifier lamp at Lv 50 and a test-bench PC at Lv 100. The sign is drawn last so the lamp sits behind it.
-- **Store-name rug:** a woven navy rug with a gold diamond border, fringe and a monitor badge (`drawStoreRug`, drawn into the floor image at the layout's `rug` spot). Store names are limited to 14 characters (the name box in Settings), and the name shrinks to fit the rug.
+- **Store-name rug:** a woven navy rug with a gold diamond border, fringe and a monitor badge (`drawStoreRug`, drawn into the floor image at the layout's `rug` spot). Players rename their store in the "Your store's name" section at the top of Settings (14 characters max, with a live count), and the name shrinks to fit the rug.
 - **Decorations:** a "gamer showroom" set (`DECOR_ITEMS`, drawn by `DECOR_DRAW`). The RGB wall strips, welcome mat and planters are there from the start; the rest appear at milestones (unlocks, hires, expanding, Store upgrades, every section at Lv 10) with a toast and confetti (`checkDecor`, saved in `decorSeen`, reset per store). Solid ones have a `rect`: all rects are in `FURNITURE` for pathfinding, and only the ones that are out block the player (`decorRectsOn`).
 - **Staff Break Room:** after expanding, a $60K pad by the wing's bottom-right corner builds a walled room (`BREAK_ROOM`, `buildBreakRoom`). The Upgrades menu's Store group upgrades it to Lv 5 ($50K doubling, `upgradeBreakRoom`); each level adds furniture (`BREAK_FURNITURE`, drawn by `drawBreakRoom` and `drawBreakFurniture`, with off-duty staff in `BREAK_LOUNGERS`) and makes all staff 5% faster (`staffBoost`, applied in `cashierScanTime`, `stockerSpeed`, `stockerHandTime` and `techBuildTime`). The CPU rug, sim rig and trophy case are decorations inside it. Saved per store (`breakRoom`, `breakPaid`), so it resets on Franchise. The room's rect is always in `FURNITURE`; its walls and furniture block the player only once built.
 - **Rush events:** a timed event happens every few minutes (`EVENTS`).
@@ -73,7 +73,7 @@ Monetization decided by the owner (not built yet): rewarded ads plus occasional 
   - `eventPriceMult()`, `eventBuildChance()` and `eventBuildPay()` apply rush-event effects.
   - `starMult()` applies Franchise Stars to `price()`.
 - **Menus and buttons.**
-  - Panels are HTML strings built by `showUpgrades`, `showMissions`, `showAdmin` and `showSettings`, then passed to `showModal`. Refreshing an open panel keeps its scroll position.
+  - Panels are HTML strings built by `showUpgrades`, `showMissions`, `showAdmin` and `showSettings`, then passed to `showModal`. Refreshing an open panel keeps its scroll position. Modal cards scroll when they're taller than the screen.
   - Buttons carry `data-act` and `data-id` and are handled in one `handleAction()` switch.
   - Actions listed in `HOLD_ACTS` repeat while held.
   - `data-cost` buttons enable and disable themselves in `updateHud()`.
@@ -103,11 +103,11 @@ The owner noted these as possible future features. Don't build them without the 
 - **Font:** Fredoka is bundled in `fonts/` (Latin and Latin Extended subsets, `woff2`) under the SIL Open Font License; keep `fonts/OFL.txt` with it. The game loads no outside files.
 
 - **Preview link:** a single HTML file. `style.css` and `game.js` are copied into the page, the bundled font files in `fonts/` are embedded in the CSS as `data:` URLs (the font preload link is dropped), and the service-worker registration at the end of `game.js` is removed. Previews and the main link each keep their own save.
-- **Service worker:** `sw.js` serves cached files and refreshes them in the background. Change its cache name (currently `pc-tycoon-v16`) when shipping changed files, so the installed app picks them up.
+- **Service worker:** `sw.js` serves cached files and refreshes them in the background. Change its cache name (currently `pc-tycoon-v17`) when shipping changed files, so the installed app picks them up.
 
 ## Where things are
 
 - **Branches:** work happens on `claude/amazing-cerf-3ne0f7`. `main` matches the main game link and is only updated when the owner approves.
 - **Preview (current version):** https://claude.ai/artifact/VCpMSXLkPFAvrSx7KqK6fn
-- **Main game link (behind the preview: no save protection, pacing changes, Store upgrades, Store goals, new decorations, upgraded store tiers, store layouts, the Staff Break Room, the new Service Station bench, the new rug or the 14-character store name yet):** https://claude.ai/artifact/Lqefw1KYjppWho31g2y6Tw. Only update it when the owner approves.
+- **Main game link (behind the preview: no save protection, pacing changes, Store upgrades, Store goals, new decorations, upgraded store tiers, store layouts, the Staff Break Room, the new Service Station bench, the new rug, the 14-character store name or the clearer Settings name section yet):** https://claude.ai/artifact/Lqefw1KYjppWho31g2y6Tw. Only update it when the owner approves.
 - **App Store launch plan (tasks marked "once you approve" need the owner's go-ahead):** https://claude.ai/artifact/8k6aLNkRvTT4W5Qehh69A9
