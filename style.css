@@ -106,6 +106,8 @@ button {
   display: inline-flex; align-items: center; gap: 6px;
 }
 #money.bump { animation: bump .25s ease-out; }
+#money.bump.cash-glow { animation: bump .25s ease-out, cashGlow .9s ease-out; }
+@keyframes cashGlow { 0%, 30% { text-shadow: 0 3px 0 #2b2350, 0 0 18px rgba(255,200,61,.95); } }
 .coin {
   display: inline-grid; place-items: center;
   width: 30px; height: 30px; border-radius: 50%;

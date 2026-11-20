@@ -271,21 +271,22 @@ function carryCost() { return Math.round(120 * Math.pow(2.1, state.carryLv)); }
 function unlockedParts() { return PARTS.filter(s => state.sec[s.id].unlocked); }
 
 let rateBucket = 0;
-function earn(amount, x, y) {
+function earn(amount, x, y, style) {
   amount = Math.round(amount);
   if (amount <= 0) return;
   rateBucket += amount;
-  bank(amount, x, y);
+  bank(amount, x, y, style);
 }
 // Put money in your pocket (sales already counted when they happened)
-function bank(amount, x, y) {
+// style 'bills' shows the bill flurry instead of the coin burst
+function bank(amount, x, y, style) {
   amount = Math.round(amount);
   if (amount <= 0) return;
   state.money += amount;
   if (state.admin && state.admin.unlimited) state.admin.savedMoney += amount;   // real earnings are kept
   state.lifetime += amount;
   track('earn', null, amount);
-  if (x !== undefined) celebrate(amount, x, y);
+  if (x !== undefined) (style === 'bills' ? cashFlurry : celebrate)(amount, x, y);
   else bumpMoney();
 }
 // ---------- Feedback effects ----------
@@ -301,6 +302,18 @@ function celebrate(amount, x, y) {
   for (let i = 0; i < fly; i++) fx.push({ type: 'fly', x, y, t: -0.25 - i * 0.06, life: 0.55, last: i === fly - 1 });
   fx.push({ type: 'text', text: '+' + money$(amount) + (big ? '!' : ''), x, y, t: 0, life: 1.3, big });
   if (big) { if (!reducedMotion) shake = 1; flash = 1; sfx.big(); } else sfx.ching();
+}
+// Cash you collect: bills peel off one by one and flip through the air into your hands, you bounce as
+// each lands, then the total pops up over you and the money counter rolls up with a glow.
+let moneyHoldUntil = 0, playerBounceAt = -1;
+const BILL_FLY = 0.45, BILL_GAP = 0.07;
+function cashFlurry(amount, x, y) {
+  const big = amount >= Math.max(300, state.rate * 15);
+  const n = big ? 12 : amount >= 50 ? 8 : 5;
+  for (let i = 0; i < n; i++) fx.push({ type: 'bill', x: x + (Math.random() - 0.5) * 10, y, t: -i * BILL_GAP, life: BILL_FLY, side: (i % 2 ? 1 : -1) * (12 + i * 3), first: i === 0, last: i === n - 1, big });
+  const land = BILL_FLY + (n - 1) * BILL_GAP;
+  fx.push({ type: 'text', follow: true, text: '+' + money$(amount) + (big ? '!' : ''), x, y, t: -land, life: 1.3, big: true });
+  moneyHoldUntil = time + land;
 }
 // Where the money counter is, in world units (coins fly there)
 function moneyTarget() {
@@ -867,7 +880,7 @@ function updateRegister(dt) {
       const total = Math.round(front.cart.reduce((sum, id) => sum + price(id), 0) * eventPriceMult() * (lucky ? 2 : 1));
       if (lucky) fx.push({ type: 'text', text: '🍀 LUCKY x2', x: REG[l].x, y: REG[l].y - 70, t: 0, life: 1.3, big: true });
       // Cash goes on the counter; if you're the one at the register it goes straight in your pocket
-      if (dist(state.player, REG[l]) < REG_RADIUS) earn(total, REG[l].x, REG[l].y - 40);
+      if (dist(state.player, REG[l]) < REG_RADIUS) earn(total, REG[l].x, REG[l].y - 40, 'bills');
       else { state.piles[l] += total; rateBucket += total; }
       track('serve', null, 1);
       for (const id of front.cart) track('sell', id, 1);
@@ -1311,8 +1324,7 @@ function updatePlayer(dt) {
 }
 function collectPile(spot, amount, clear) {
   clear();
-  bank(amount, spot.x, spot.y - 30);
-  for (let i = 0; i < 6; i++) fx.push({ type: 'coin', x: spot.x + Math.random() * 20 - 10, y: spot.y, tx: state.player.x, ty: state.player.y - 30, t: -i * 0.05 });
+  bank(amount, spot.x, spot.y - 6, 'bills');
 }
 // Stand on the crate this long before boxes start going back (so you don't return them by accident)
 const RETURN_DELAY = 1;
@@ -1398,21 +1410,28 @@ function deliveryCost() { return Math.round(300 * Math.pow(2, state.deliveryLv))
 function truckCost() { return Math.round(500 * Math.pow(2, state.truckLv)); }
 const DOCK_X = 300, ROAD_Y = -48;
 let truckTimer = 30;
-const truck = { phase: 'away', x: -220, t: 0, drop: 0 };
+// The truck parks with its rear door (TRUCK_DOOR units behind its centre) at the dock
+const TRUCK_DOOR = 88;
+const truck = { phase: 'away', x: -220, t: 0, drop: 0, puffs: [] };
 function updateTruck(dt) {
+  // exhaust puffs: steady while driving, the odd one while parked
+  const moving = truck.phase === 'arriving' || truck.phase === 'leaving';
+  if (truck.phase !== 'away' && Math.random() < (moving ? 18 : 3) * dt) truck.puffs.push({ x: truck.x - 84, y: ROAD_Y + 14, t: 0 });
+  for (const p of truck.puffs) p.t += dt;
+  truck.puffs = truck.puffs.filter(p => p.t < 0.9);
   if (truck.phase === 'away') {
     truckTimer -= dt;
     if (truckTimer <= 0) { truck.phase = 'arriving'; truck.x = -220; }
   } else if (truck.phase === 'arriving') {
     truck.x += 280 * dt;
-    if (truck.x >= DOCK_X) { truck.x = DOCK_X; truck.phase = 'unloading'; truck.t = 0; beep(440, 0.15, 'square', 0.03); }
+    if (truck.x >= DOCK_X + TRUCK_DOOR) { truck.x = DOCK_X + TRUCK_DOOR; truck.phase = 'unloading'; truck.t = 0; beep(440, 0.15, 'square', 0.03); }
   } else if (truck.phase === 'unloading') {
     truck.t += dt; truck.drop += dt;
     const parts = unlockedParts();
     if (truck.drop > 0.12 && parts.length) {
       truck.drop = 0;
       const s = parts[Math.floor(Math.random() * parts.length)];
-      fx.push({ type: 'box', x: DOCK_X, y: ROAD_Y + 10, tx: s.crate.x, ty: s.crate.y, t: 0, color: s.color });
+      fx.push({ type: 'box', x: DOCK_X, y: ROAD_Y - 4, tx: s.crate.x, ty: s.crate.y, t: 0, color: s.color });
     }
     if (truck.t >= 2.2) {
       for (const s of parts) state.crates[s.id] = crateMax();
@@ -1500,6 +1519,12 @@ function update(dt, movePlayer = true) {
 
   for (const f of fx) f.t += dt;
   for (const f of fx) if (f.type === 'fly' && f.last && !f.done && f.t >= f.life) { f.done = true; bumpMoney(); }
+  for (const f of fx) if (f.type === 'bill' && !f.done && f.t >= f.life) {
+    f.done = true; playerBounceAt = time;
+    fx.push({ type: 'tick', x: state.player.x + (f.side > 0 ? 14 : -14), y: state.player.y - 30, t: 0, life: 0.3 });
+    if (f.first) { if (f.big) sfx.big(); else sfx.ching(); }
+    if (f.last) { cashGlow(); if (f.big) { if (!reducedMotion) shake = 1; flash = 1; } }
+  }
   fx = fx.filter(f => f.t < (f.life || (f.type === 'text' ? 1.2 : 0.6)));
   shake = Math.max(0, shake - dt * 3); flash = Math.max(0, flash - dt * 2.5);
 }
@@ -1759,7 +1784,15 @@ function render() {
   for (const k in npcs) people.push({ o: npcs[k], kind: 'staff' });
   for (const b of BREAK_LOUNGERS) if (breakLv() >= b.lv) people.push({ o: b, kind: 'staff' });
   people.sort((a, b) => a.o.y - b.o.y);
-  for (const p of people) drawPerson(p.o, p.kind);
+  for (const p of people) {
+    // the player bounces a little as each collected bill lands
+    const a = p.kind === 'player' ? time - playerBounceAt : 1;
+    if (a >= 0 && a < 0.18) {
+      const sq = Math.sin(a / 0.18 * Math.PI) * 0.12, o = p.o;
+      ctx.save(); ctx.translate(o.x, o.y); ctx.scale(1 + sq, 1 - sq); ctx.translate(-o.x, -o.y);
+      drawPerson(o, p.kind); ctx.restore();
+    } else drawPerson(p.o, p.kind);
+  }
   for (const c of customers) drawBubble(c);
 
   drawFx();
@@ -2008,18 +2041,63 @@ function drawRoad() {
   ctx.strokeStyle = '#f4d35e'; ctx.lineWidth = 3; ctx.setLineDash([18, 14]);
   ctx.beginPath(); ctx.moveTo(-200, -50); ctx.lineTo(W_FULL + 200, -50); ctx.stroke(); ctx.setLineDash([]);
 }
+// The delivery truck: a purple box truck in the store's livery (GPU logo, neon stripe) with a yellow cab.
+// Wheels spin as it drives, the brake lights come on as it parks, and the back door rolls up to unload.
 function drawTruck() {
   if (truck.phase === 'away') return;
-  const x = truck.x, y = ROAD_Y;
-  // trailer
-  rr(x - 90, y - 26, 120, 48, 8); ctx.fillStyle = '#fafafa'; ctx.fill();
-  ctx.strokeStyle = '#c9c3e3'; ctx.lineWidth = 2; ctx.stroke();
-  text('PC PARTS', x - 30, y - 2, 13, '#5b2bd1');
+  const moving = truck.phase === 'arriving' || truck.phase === 'leaving';
+  const x = truck.x, y = ROAD_Y + (moving && !reducedMotion ? Math.sin(time * 30) * 0.8 : 0), rot = truck.x / 9;
+  // shadow and exhaust
+  ctx.fillStyle = 'rgba(15,8,40,.35)'; ctx.beginPath(); ctx.ellipse(x - 10, ROAD_Y + 28, 92, 7, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#d8d3ea';
+  for (const p of truck.puffs) { const k = p.t / 0.9; ctx.globalAlpha = 0.55 * (1 - k); ctx.beginPath(); ctx.arc(p.x - k * 22, p.y - k * 10, 3 + k * 6, 0, Math.PI * 2); ctx.fill(); }
+  ctx.globalAlpha = 1;
+  // box body
+  const gr = ctx.createLinearGradient(0, y - 38, 0, y + 18); gr.addColorStop(0, '#7b4bf0'); gr.addColorStop(1, '#4a22b0');
+  rr(x - 86, y - 38, 118, 56, 7); ctx.fillStyle = gr; ctx.fill(); ctx.strokeStyle = '#2d1470'; ctx.lineWidth = 2; ctx.stroke();
+  rr(x - 82, y - 35, 110, 6, 3); ctx.fillStyle = 'rgba(255,255,255,.18)'; ctx.fill();
+  // neon stripe
+  ctx.fillStyle = 'rgba(127,212,255,.35)'; ctx.fillRect(x - 84, y + 6, 114, 7);
+  ctx.fillStyle = '#7fd4ff'; ctx.fillRect(x - 84, y + 8, 114, 3);
+  // logo: a little graphics card and the name
+  rr(x - 66, y - 22, 26, 15, 3); ctx.fillStyle = '#1b1040'; ctx.fill();
+  for (const fx2 of [x - 59, x - 47]) {
+    ctx.beginPath(); ctx.arc(fx2, y - 14.5, 5, 0, Math.PI * 2); ctx.fillStyle = '#7fd4ff'; ctx.fill();
+    ctx.beginPath(); ctx.arc(fx2, y - 14.5, 1.6, 0, Math.PI * 2); ctx.fillStyle = '#1b1040'; ctx.fill();
+  }
+  text('PC PARTS', x - 4, y - 16, 13, '#fff');
+  text('TYCOON SUPPLY', x - 4, y - 3, 7.5, '#ffd76a', 600);
+  // roll-up rear door
+  const open = truck.phase === 'unloading' ? Math.max(0, Math.min(1, truck.t * 3, (2.2 - truck.t) * 3)) : 0;
+  rr(x - 92, y - 34, 9, 48, 3); ctx.fillStyle = '#20124f'; ctx.fill();
+  ctx.fillStyle = '#c9c3e3';
+  for (let k = 0; k < 48 * (1 - open) - 1; k += 4) ctx.fillRect(x - 92, y - 34 + k, 9, 3);
+  // brake lights
+  const brake = truck.phase === 'unloading' || (truck.phase === 'arriving' && truck.x > DOCK_X + TRUCK_DOOR - 80);
+  ctx.fillStyle = brake ? '#ff3b4a' : '#8a2a3a'; ctx.fillRect(x - 93, y + 12, 5, 6);
+  if (brake) { ctx.globalAlpha = 0.35; ctx.beginPath(); ctx.arc(x - 92, y + 15, 9, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1; }
   // cab
-  rr(x + 32, y - 16, 40, 38, 8); ctx.fillStyle = '#ff6b6b'; ctx.fill();
-  rr(x + 52, y - 10, 16, 14, 3); ctx.fillStyle = '#bfe9ff'; ctx.fill();
-  ctx.fillStyle = '#2b2350';
-  for (const wx of [x - 64, x - 8, x + 54]) { ctx.beginPath(); ctx.arc(wx, y + 24, 8, 0, Math.PI * 2); ctx.fill(); }
+  ctx.beginPath(); ctx.moveTo(x + 34, y + 18); ctx.lineTo(x + 34, y - 22); ctx.lineTo(x + 56, y - 22);
+  ctx.quadraticCurveTo(x + 74, y - 20, x + 76, y - 2); ctx.lineTo(x + 78, y + 18); ctx.closePath();
+  ctx.fillStyle = '#ffc83d'; ctx.fill(); ctx.strokeStyle = '#b27d00'; ctx.lineWidth = 2; ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(x + 52, y - 18); ctx.lineTo(x + 58, y - 18); ctx.quadraticCurveTo(x + 70, y - 16, x + 72, y - 3); ctx.lineTo(x + 52, y - 3); ctx.closePath();
+  ctx.fillStyle = '#bfe9ff'; ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,.55)'; ctx.fillRect(x + 55, y - 15, 3, 9);
+  ctx.fillStyle = '#2b2350'; ctx.fillRect(x + 44, y - 16, 3, 10);
+  rr(x + 72, y + 12, 10, 6, 2); ctx.fillStyle = '#9aa0b5'; ctx.fill();
+  // headlight and its beam
+  ctx.fillStyle = '#fff6c8'; ctx.beginPath(); ctx.arc(x + 77, y + 5, 3.2, 0, Math.PI * 2); ctx.fill();
+  const lg = ctx.createRadialGradient(x + 80, y + 5, 2, x + 92, y + 5, 26);
+  lg.addColorStop(0, 'rgba(255,240,170,.45)'); lg.addColorStop(1, 'rgba(255,240,170,0)');
+  ctx.fillStyle = lg; ctx.beginPath(); ctx.moveTo(x + 79, y + 4); ctx.lineTo(x + 112, y - 8); ctx.lineTo(x + 112, y + 18); ctx.closePath(); ctx.fill();
+  // wheels with spinning hubcaps
+  for (const wx of [x - 64, x - 38, x + 58]) {
+    ctx.beginPath(); ctx.arc(wx, y + 22, 10, 0, Math.PI * 2); ctx.fillStyle = '#211a3d'; ctx.fill();
+    ctx.beginPath(); ctx.arc(wx, y + 22, 5, 0, Math.PI * 2); ctx.fillStyle = '#c9c3e3'; ctx.fill();
+    ctx.strokeStyle = '#6e6790'; ctx.lineWidth = 1.5; ctx.beginPath();
+    for (let a = 0; a < 3; a++) { const an = rot + a * Math.PI * 2 / 3; ctx.moveTo(wx, y + 22); ctx.lineTo(wx + Math.cos(an) * 5, y + 22 + Math.sin(an) * 5); }
+    ctx.stroke();
+  }
 }
 function drawWalls() {
   for (const r of (state.expanded ? DIVIDER_OPEN : DIVIDER_CLOSED)) {
@@ -2791,7 +2869,8 @@ function drawFx() {
       const life = f.life || 1.2, k = f.t / life;
       const sc = f.big ? 1 + 0.35 * Math.max(0, 1 - k * 4) : 1 + 0.2 * Math.max(0, 1 - k * 5);
       ctx.globalAlpha = Math.max(0, 1 - Math.max(0, k - 0.55) / 0.45);
-      ctx.save(); ctx.translate(f.x, f.y - k * 46); ctx.scale(sc, sc);
+      const fx0 = f.follow ? state.player.x : f.x, fy0 = f.follow ? state.player.y - 58 : f.y;
+      ctx.save(); ctx.translate(fx0, fy0 - k * 46); ctx.scale(sc, sc);
       outlinedText(f.text, 0, 0, f.big ? 26 : f.bad ? 15 : 18, f.bad ? '#ffb3b5' : f.big ? '#ffe17a' : '#7ef0a8', f.bad ? '#9b1c22' : f.big ? '#8a5a00' : '#1e5e36');
       ctx.restore();
     } else if (f.type === 'burst') {
@@ -2825,6 +2904,19 @@ function drawFx() {
       const bx = f.x + (f.tx - f.x) * k, by = f.y + (f.ty - f.y) * k - Math.sin(k * Math.PI) * 40;
       if (f.carried) drawCardboard(bx, by, 20, 13, f.color);
       else { rr(bx - 9, by - 7, 18, 14, 3); ctx.fillStyle = f.color; ctx.fill(); }
+    } else if (f.type === 'bill') {
+      const k = Math.min(1, f.t / f.life), e = ease(k), arc = Math.sin(k * Math.PI);
+      const tx = state.player.x, ty = state.player.y - 22;
+      const bx = f.x + (tx - f.x) * e + f.side * arc, by = f.y + (ty - f.y) * e - arc * 50;
+      ctx.save(); ctx.translate(bx, by); ctx.rotate(f.side * 0.02 + k * 2);
+      const sc = 1 - 0.25 * k; ctx.scale(sc, sc * Math.cos(k * 14));
+      rr(-11, -6, 22, 12, 2); ctx.fillStyle = '#2ecc71'; ctx.fill(); ctx.strokeStyle = '#1e7a45'; ctx.lineWidth = 1; ctx.stroke();
+      ctx.beginPath(); ctx.arc(0, 0, 3.6, 0, Math.PI * 2); ctx.fillStyle = '#c9f5da'; ctx.fill();
+      ctx.restore();
+    } else if (f.type === 'tick') {
+      const k = f.t / f.life;
+      ctx.globalAlpha = 1 - k;
+      outlinedText('+', f.x, f.y - k * 40, 14, '#7ef0a8', '#1e5e36');
     } else if (f.type === 'coin') {
       if (f.t < 0) continue;
       const k = f.t / 0.6;
@@ -3031,11 +3123,12 @@ window.addEventListener('blur', () => keys.clear());
 const $ = sel => document.querySelector(sel);
 let lastMoneyText = '';
 let shownMoney = NaN;
+function cashGlow() { const m = $('#money'); m.classList.remove('bump', 'cash-glow'); void m.offsetWidth; m.classList.add('bump', 'cash-glow'); }
 function bumpMoney() { const m = $('#money'); m.classList.remove('bump'); void m.offsetWidth; m.classList.add('bump'); }
 let hudTimer = 0;
 function updateHud(dt) {
   if (!(shownMoney <= state.money)) shownMoney = state.money;   // spending shows at once
-  else if (shownMoney < state.money) shownMoney = Math.min(state.money, shownMoney + Math.max(1, (state.money - shownMoney) * Math.min(1, dt * 6)));
+  else if (shownMoney < state.money && time >= moneyHoldUntil) shownMoney = Math.min(state.money, shownMoney + Math.max(1, (state.money - shownMoney) * Math.min(1, dt * 6)));
   const mt = fmt(Math.floor(shownMoney));
   if (mt !== lastMoneyText) { $('#moneyVal').textContent = mt; lastMoneyText = mt; }
   hudTimer += dt;
