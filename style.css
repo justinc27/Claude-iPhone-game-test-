@@ -245,9 +245,8 @@ button {
 
 /* ---------- Modal ---------- */
 .modal {
-  position: fixed; inset: 0; background: rgba(20,8,60,.6);
+  position: fixed; inset: 0; background: rgba(20,8,60,.66);
   display: grid; place-items: center; z-index: 50; padding: 20px;
-  backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
 }
 .modal.hidden { display: none; }
 .modal.as-sheet { place-items: end center; padding: 0; }

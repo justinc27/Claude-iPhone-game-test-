@@ -88,9 +88,11 @@ Monetization decided by the owner (not built yet): rewarded ads plus occasional 
   - `data-cost` buttons enable and disable themselves in `updateHud()`.
 - **Rendering.**
   - Everything is drawn on one canvas, in a fixed order inside `render()`, with characters sorted by y.
-  - The floor, walls, lighting and furniture shadows are drawn once into an image (`buildFloor()`), rebuilt only when the theme, expansion, unlocks or zoom change.
-  - Emoji are pre-drawn and cached (`drawEmoji`).
-  - Performance (profiled in headless Chromium at 4x CPU slowdown): the game's own update and drawing cost under 1 ms a frame, so per-frame logic isn't the bottleneck. Start-up stutter comes from one-off work: the first `buildFloor` (about 1600×1600 px on a phone, also rebuilt on every unlock), first-use emoji and product-art caching, the `AudioContext` created on the first sound, and the modal's `backdrop-filter: blur` over the moving canvas. Possible fixes have been suggested to the owner but not approved. Check any fix on a real iPhone, since headless runs can't measure its GPU cost.
+  - The floor, walls and lighting are drawn once into an image (`buildFloor()`), rebuilt only when the store name, theme, expansion or zoom change. Furniture shadows are drawn live on top in `drawFloor`, so unlocks don't rebuild the image.
+  - Emoji are pre-drawn and cached (`emojiSprite`); `warmEmoji` pre-draws the common ones at load and after a resize so they don't cost a frame mid-game.
+  - Sound starts on the first touch (`unlockAudio`), not on the first sound.
+  - Pop-ups use a plain dark tint, not `backdrop-filter: blur`, which is slow on iOS over the moving canvas.
+  - Performance (profiled in headless Chromium at 4x CPU slowdown): the game's own update and drawing cost under 1 ms a frame, and real frames hold 60 fps. The start-up stutter fixes above were checked in headless Chromium only; check performance changes on a real iPhone, since headless runs can't measure its GPU cost. When timing `render()` in a loop without `requestAnimationFrame`, expect a fake ~450 ms spike every ~65 calls: the canvas queues its drawing until it is shown.
   - Colours on the canvas are hard-coded, with no theme tokens.
 
 ## Ideas for later (not approved to build)
@@ -113,7 +115,7 @@ The owner noted these as possible future features. Don't build them without the 
 - **Font:** Fredoka is bundled in `fonts/` (Latin and Latin Extended subsets, `woff2`) under the SIL Open Font License; keep `fonts/OFL.txt` with it. The game loads no outside files.
 
 - **Preview link:** a single HTML file built by `python3 tools/build-preview.py OUTPUT.html [--title NAME]` from `index.html`. `style.css` and `game.js` are copied into the page, the bundled font files in `fonts/` are embedded in the CSS as `data:` URLs (the font preload link is dropped), and the service-worker registration at the end of `game.js` is removed. Previews and the main link each keep their own save.
-- **Service worker:** `sw.js` serves cached files and refreshes them in the background. Change its cache name (currently `pc-tycoon-v18`) when shipping changed files, so the installed app picks them up.
+- **Service worker:** `sw.js` serves cached files and refreshes them in the background. Change its cache name (currently `pc-tycoon-v19`) when shipping changed files, so the installed app picks them up.
 
 ## Where things are
 

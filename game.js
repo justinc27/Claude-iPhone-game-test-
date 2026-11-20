@@ -363,6 +363,21 @@ function fmtTime(sec) {
 
 // ---------- Sound ----------
 let audioCtx = null;
+// Start the sound system on the first touch, so the first sound doesn't hitch while it starts up.
+// iOS only lets it start from a touch; a silent blip finishes unlocking it.
+function unlockAudio() {
+  try {
+    if (!audioCtx) {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const g = audioCtx.createGain(); g.gain.value = 0;
+      const o = audioCtx.createOscillator(); o.connect(g).connect(audioCtx.destination);
+      o.start(); o.stop(audioCtx.currentTime + 0.01);
+    }
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+  } catch (e) { /* no audio */ }
+}
+window.addEventListener('pointerdown', unlockAudio, { capture: true, passive: true });
+window.addEventListener('keydown', unlockAudio, { capture: true, passive: true });
 function beep(freq = 880, dur = 0.07, type = 'sine', vol = 0.05) {
   if (!state.sound) return;
   try {
@@ -1501,6 +1516,7 @@ function resize() {
   canvas.height = Math.round(cssH * DPR);
   zoom = Math.min(cssW / VIEW_UNITS, cssH / 700);
   for (const k in emojiCache) delete emojiCache[k];
+  warmEmoji();
 }
 window.addEventListener('resize', resize);
 
@@ -1651,6 +1667,11 @@ function drawEmoji(ch, x, y, size, shadow = false) {
     ctx.drawImage(pa.shadow, x - w / 2 - ART_PAD * k, y - h / 2 - ART_PAD * k, pa.shadow.width * k, pa.shadow.height * k);
     return;
   }
+  const box = shadow ? 1.7 : 1.4;
+  const c = emojiSprite(ch, size, shadow);
+  ctx.drawImage(c, x - size * box / 2, y - size * box / 2, size * box, size * box);
+}
+function emojiSprite(ch, size, shadow) {
   const px = Math.max(4, Math.round(size * zoom * DPR));
   const key = ch + px + (shadow ? 's' : '');
   const box = shadow ? 1.7 : 1.4;
@@ -1665,7 +1686,17 @@ function drawEmoji(ch, x, y, size, shadow = false) {
     g.fillText(ch, c.width / 2, c.height / 2 + px * 0.06);
     emojiCache[key] = c;
   }
-  ctx.drawImage(c, x - size * box / 2, y - size * box / 2, size * box, size * box);
+  return c;
+}
+// Pre-draw the emoji that show up during play (thought bubbles, pads, signs, coins), so the first
+// time each appears doesn't cost a frame. Run at load and after a resize, which clears the cache.
+function warmEmoji() {
+  const icons = [...SECTIONS.map(s => s.icon), ...Object.values(STAFF).map(s => s.icon), ...Object.values(JOBS).map(j => j.icon)];
+  const sets = [
+    [16, ['😄', '😠', '💳', '🛠️', '🖥️', ...icons]], [18, ['🧱', '☕', '🧰', '🔧', ...icons]], [13, icons], [24, ['🔒', ...icons]],
+    [14, ['🛍️', '🪙', '☕']], [12, ['✨', '🍕']], [11, ['🥤']], [22, ['🧰']],
+  ];
+  for (const [size, list] of sets) for (const ch of list) if (!PRODUCT_ART[ch]) emojiSprite(ch, size, false);
 }
 function rr(x, y, w, h, r) {
   ctx.beginPath();
@@ -1746,8 +1777,9 @@ function softShadow(r, radius = 10) {
   }
 }
 const LIGHTS = [{ x: 150, y: 330 }, { x: 450, y: 330 }, { x: 300, y: 560 }, { x: 150, y: 800 }, { x: 450, y: 800 }, { x: 760, y: 330 }, { x: 760, y: 640 }, { x: 900, y: 860 }];
-// The floor, wall trim, light pools and furniture shadows only change when the store does,
-// so they're drawn once into an image and reused every frame.
+// The floor, wall trim and light pools only change when the store does (theme, name, expansion,
+// zoom), so they're drawn once into an image and reused every frame. Furniture shadows are drawn
+// live in drawFloor, so unlocks don't rebuild it.
 let floorCache = null, floorKey = '';
 function buildFloor() {
   const sc = Math.min(2, Math.max(0.5, zoom * DPR));
@@ -1786,10 +1818,6 @@ function buildFloor() {
   if (T.planks !== null) drawPlanks(...LY.planks, T.planks);
   // store-logo rug in the open floor
   drawStoreRug(...LY.rug);
-  // shadows under the furniture that's in the store
-  for (const r of COUNTERS) softShadow(r, 9);
-  for (const s of PARTS) if (state.sec[s.id].unlocked) softShadow(s.shelf);
-  if (state.sec.svc.unlocked) softShadow(SEC.svc.bench);
   ctx.restore();
   // crisp baseboard line
   rr(16, 16, W_FULL - 32, H - 32, 10); ctx.strokeStyle = 'rgba(20,10,50,.22)'; ctx.lineWidth = 2; ctx.stroke();
@@ -1949,9 +1977,17 @@ function drawFloorSurface(T) {
   }
 }
 function drawFloor() {
-  const key = [state.storeName, theme().name, theme().trim, state.expanded, ...SECTIONS.map(s => state.sec[s.id].unlocked ? 1 : 0), Math.round(zoom * DPR * 100)].join(',');
+  const key = [state.storeName, theme().name, theme().trim, state.expanded, Math.round(zoom * DPR * 100)].join(',');
   if (key !== floorKey || !floorCache) { buildFloor(); floorKey = key; }
   ctx.drawImage(floorCache, 0, 0, W_FULL, H);
+  // shadows under the furniture that's in the store, drawn live (they're cheap) so an unlock
+  // doesn't rebuild the whole floor image
+  ctx.save();
+  rr(16, 16, W_FULL - 32, H - 32, 10); ctx.clip();
+  for (const r of COUNTERS) softShadow(r, 9);
+  for (const s of PARTS) if (state.sec[s.id].unlocked) softShadow(s.shelf);
+  if (state.sec.svc.unlocked) softShadow(SEC.svc.bench);
+  ctx.restore();
 }
 // A gentle darkening around the screen edges
 let vignette = null, vignetteKey = '';
@@ -2970,7 +3006,6 @@ canvas.addEventListener('pointerdown', e => {
   joy.ox = joy.x = e.clientX; joy.oy = joy.y = e.clientY;
   canvas.setPointerCapture(e.pointerId);
   moveJoy(e);
-  if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
 });
 canvas.addEventListener('pointermove', e => { if (joy.active && e.pointerId === joy.id) moveJoy(e); });
 function endJoy(e) {
