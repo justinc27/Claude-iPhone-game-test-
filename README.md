@@ -6,7 +6,8 @@ A store tycoon game for iPhone. You run a PC parts store as a character on the s
 
 You play a store clerk on the shop floor. **Drag anywhere on the screen** to walk; your character moves in the direction you drag. On a computer, the arrow keys or WASD also work.
 
-- **The store (Racetrack Loop layout):** stockroom across the top, Service Station below it, Accessories and PC Cases on the side walls, Monitors and Graphics Cards back to back on a center island. There's a walkable aisle between the two island shelves. Shoppers come in at the entrance (bottom-left), wander the floor and stop to browse on the way to the shelves they want, then check out at one of 2 lanes and leave by the exit (bottom-right).
+- **Getting started:** a new player names their store, then a short 6-step tutorial checklist walks through the basics (with small cash rewards). It can be skipped. After that, one-time tips explain each new system the first time it shows up.
+- **The store (The Loop layout, in your first store):** stockroom across the top, Service Station below it, Accessories and PC Cases on the side walls, Monitors and Graphics Cards back to back on a center island. There's a walkable aisle between the two island shelves. Shoppers come in at the entrance (bottom-left), wander the floor and stop to browse on the way to the shelves they want, then check out at one of 2 lanes and leave by the exit (bottom-right).
 - **Restock shelves.** Walk onto a crate in the **stockroom** (top of the store) to pick up boxes. Walk next to the matching shelf to stock it. Shoppers can't buy from an empty shelf, and they leave unhappy if they wait too long.
 - **Check people out.** Shoppers stop at the shelves for the items in their thought bubble, then line up at the **checkout**. Stand on the yellow circle next to a counter to scan their items and get paid. Lane 1 is yours; once you hire a cashier they run Lane 2, and if you walk away from Lane 1 the people waiting there move to the cashier's lane.
 - **Unlock new sections.** Stand on a yellow **UNLOCK** pad and your cash flows into it.
@@ -28,7 +29,9 @@ You play a store clerk on the shop floor. **Drag anywhere on the screen** to wal
 - **Service Station jobs:** customers bring a **Repair** (no parts), an **Upgrade** (one part, like a GPU) or a **Full Build** (case + GPU, plus CPU and RAM once unlocked). Carry the parts to the bench, then stand on the pink circle to work. The tech takes parts off the shelves on their own.
 - **Rush events:** every few minutes (once Monitors are unlocked): *GPU Launch Day*, *Black Friday* (double prices), *Build Season* (jobs pay double) or *Back to School*.
 - **Missions (📋 button):** 3 daily missions with cash rewards that reset at midnight, plus achievements that each give a ⭐ Star.
-- **Franchise:** in the Upgrades menu, sell your store for ⭐ Stars (based on lifetime earnings). Every Star adds 5% to all prices forever. You restart in a new location: Strip Mall → Shopping Mall → Warehouse → Flagship Store.
+- **Store upgrades:** after expanding, the Upgrades menu offers Advertising, Premium Displays and Pro Repair Kits, and the Missions panel has Store goals with cash rewards.
+- **Staff Break Room:** after expanding, a $60K pad in the wing's bottom-right corner builds a break room. Upgrade it to Lv 5 in the Upgrades menu; each level adds furniture and makes all staff 5% faster.
+- **Franchise:** in the Upgrades menu, once all 8 sections are open, sell your store for ⭐ Stars (based on lifetime earnings) and pay a franchise fee ($1.5M, x4 each time). Every Star you hold adds 5% to all prices. You can also spend Stars on permanent perks in the **Star Shop** (the ⭐ button), such as Head Start, Veteran Staff and Night Shift; spent Stars no longer add to prices. You restart in a bigger store with a new look and floor plan: Small Store → Strip Mall → Shopping Mall → Megastore → Flagship Store.
 - **Upgrades (⬆️ button):** tap to buy once, or **hold** a Level Up or Buy button to keep buying (it speeds up the longer you hold). Level up a section to raise its item price (x2 at levels 10, 25, 50 and 100, and bigger shelves). Hire staff: a **cashier** runs Lane 2, a **second cashier** ($3,000, after the first) runs Lane 1, a **stocker** refills shelves, and a **tech** works the Service Station. Buy faster shoes and a bigger carrying stack for yourself.
 - **Staff upgrades:** once someone is hired, their upgrades appear under their name in the Upgrades menu: **Faster Scanning** (both cashiers), **Stocker Shoes** and **Hand Truck** (stocker), and **Power Tools** (tech).
 - **Hiring on the floor:** the blue **HIRE CASHIER** pad (beside the checkout; it turns into **HIRE CASHIER 2** once the first cashier is hired) and **HIRE STOCKER** pad (in the stockroom) work like unlock pads. If you pay part on the floor, the Upgrades menu only charges the rest.
@@ -67,7 +70,9 @@ npx cap add ios && npx cap open ios   # requires a Mac with Xcode
 
 ## Files
 
-- `index.html`: page shell, top bar, tab bar
+- `index.html`: page shell, top bar, buttons and tutorial card
 - `style.css`: top bar, joystick, upgrade panel and pop-ups
 - `game.js`: the store layout, shoppers, staff, controls and drawing. Tune prices and unlock costs in the `SECTIONS` table at the top, and staff in `STAFF`.
 - `sw.js`, `manifest.webmanifest`, `icons/`: offline support and the home-screen icon
+- `fonts/`: the bundled Fredoka font (SIL Open Font License, `fonts/OFL.txt`)
+- `tools/build-preview.py`: builds the one-file preview page used for the claude.ai links

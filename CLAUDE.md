@@ -10,13 +10,21 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Answering questions and reading the code needs no approval.
 - When a change is approved, do only that change.
 
+## Shipping an approved change
+
+1. Edit the code and check it (`node --check game.js`, then a Playwright run; see below).
+2. Bump the cache name in `sw.js` and update this file if anything it describes changed.
+3. Commit and push to `claude/amazing-cerf-3ne0f7`.
+4. Rebuild the preview (`python3 tools/build-preview.py <scratchpad>/preview.html`) and republish it to the preview link.
+5. Update the main game link and `main` only when the owner asks.
+
 ## What the game is
 
 PC Parts Tycoon is a top-down idle tycoon game for iPhone, written in plain HTML, CSS and JS with no build step. The player is a clerk in a PC parts store. They walk with a touch joystick (drag anywhere), carry boxes from the stockroom to the shelves, check out shoppers at the registers, unlock sections on floor pads, and hire staff.
 
 Main systems, all in `game.js`:
 
-- **Store layouts:** each store tier has its own floor plan (`LAYOUTS`, applied by `applyLayout` from `rebuildGrid` whenever the tier changes): The Loop (Small Store), Twin Aisles (Strip Mall), Wall Displays (Shopping Mall), Long Rows (Megastore) and Build Bar Centre (Flagship and later). The stockroom, its doors, the entrance and exit are the same in all of them, and the Service Station stays in the main room because it unlocks before the wing opens. The first layout, The Loop, is described next: the stockroom is across the top, and the Service Station is below it. Accessories and PC Cases are on the side walls; Monitors and Graphics Cards are on a centre island with a walkable aisle between them. There are 2 checkout lanes, an entrance at bottom-left and an exit at bottom-right. An expansion wing (x 600–1000) holds CPUs, RAM & Storage and Gaming Chairs.
+- **Store layouts:** each store tier has its own floor plan (`LAYOUTS`, applied by `applyLayout` from `rebuildGrid` whenever the tier changes): The Loop (Small Store), Twin Aisles (Strip Mall), Wall Displays (Shopping Mall), Long Rows (Megastore) and Build Bar Centre (Flagship and later). All of them share the stockroom across the top, its doors, 2 checkout lanes, the entrance (bottom-left) and exit (bottom-right). The Service Station stays in the main room because it unlocks before the expansion wing (x 600–1000), which holds CPUs, RAM & Storage and Gaming Chairs.
 - **Sections:** these unlock in order (`SECTIONS` table: prices, unlock costs, shelf and crate positions). Leveling a section up raises its item price.
 - **Staff:** two cashiers, a stocker and a tech, each with upgrades (`STAFF`, `STAFF_UPGRADES`). Staff can be hired on floor pads or in the Upgrades menu.
 - **Stockroom:** stock is limited. A delivery truck refills the crates. Crates sit at `CRATE_Y`, near the back wall, leaving a marked walkway in front of them where nothing is picked up; you pick up by stepping onto a crate.
@@ -29,7 +37,7 @@ Main systems, all in `game.js`:
 - **Rush events:** a timed event happens every few minutes (`EVENTS`).
 - **Missions:** daily missions and achievements (`ACHIEVEMENTS`; an achievement gives a Star).
 - **Store upgrades and Store goals:** after expanding, the Upgrades menu offers Advertising, Premium Displays and Pro Repair Kits (`STORE_UPGRADES`, 5 levels each). The Missions panel has Store goals with cash rewards (`GOALS`, scaled by `goalReward`). Both are per-store (`storeUp`, `goalsDone`, `goalsClaimed`, `storeServed`, `storeBuilt`) and reset on Franchise.
-- **Franchise:** the prestige reset. It needs all 8 sections open, a Star to claim, and a fee of $1.5M that grows x4 per Franchise (`FRANCHISE_BASE`, `FRANCHISE_GROWTH`, `canFranchise`). Stars give +5% to prices. Each new store is a visible step up (`THEMES`, read through `themeFor(n)`) with its own layout: Small Store → Strip Mall → Shopping Mall → Megastore → Flagship Store. The floor (`drawFloorSurface`), walls (`drawWallFace`, `wallTrim`), shelves (`shelfBody`) and checkout counters (`counterBody`) change style per tier; stores after the Flagship keep its look with a new neon colour (`FLAGSHIP_ACCENTS`).
+- **Franchise:** the prestige reset. It needs all 8 sections open, a Star to claim, and a fee of $1.5M that grows x4 per Franchise (`FRANCHISE_BASE`, `FRANCHISE_GROWTH`, `canFranchise`). Each Star held gives +5% to prices (`starMult`); Stars can also be spent on permanent perks in the Star Shop (`STAR_PERKS`, `showStarShop`), which lowers that bonus. Each new store is a visible step up (`THEMES`, read through `themeFor(n)`) with its own layout: Small Store → Strip Mall → Shopping Mall → Megastore → Flagship Store. The floor (`drawFloorSurface`), walls (`drawWallFace`, `wallTrim`), shelves (`shelfBody`) and checkout counters (`counterBody`) change style per tier; stores after the Flagship keep its look with a new neon colour (`FLAGSHIP_ACCENTS`).
 - **Admin tools:** Settings → Admin tools, for testing only (unlimited money, game speed, shortcuts). They must be hidden or removed before an App Store release.
 
 Monetization decided by the owner (not built yet): rewarded ads plus occasional full-screen ads (AdMob), and a $3.99 Remove Ads purchase that also grants rewarded bonuses without watching. See the launch plan.
@@ -82,6 +90,7 @@ Monetization decided by the owner (not built yet): rewarded ads plus occasional 
   - Everything is drawn on one canvas, in a fixed order inside `render()`, with characters sorted by y.
   - The floor, walls, lighting and furniture shadows are drawn once into an image (`buildFloor()`), rebuilt only when the theme, expansion, unlocks or zoom change.
   - Emoji are pre-drawn and cached (`drawEmoji`).
+  - Performance (profiled in headless Chromium at 4x CPU slowdown): the game's own update and drawing cost under 1 ms a frame, so per-frame logic isn't the bottleneck. Start-up stutter comes from one-off work: the first `buildFloor` (about 1600×1600 px on a phone, also rebuilt on every unlock), first-use emoji and product-art caching, the `AudioContext` created on the first sound, and the modal's `backdrop-filter: blur` over the moving canvas. Possible fixes have been suggested to the owner but not approved. Check any fix on a real iPhone, since headless runs can't measure its GPU cost.
   - Colours on the canvas are hard-coded, with no theme tokens.
 
 ## Ideas for later (not approved to build)
@@ -103,10 +112,12 @@ The owner noted these as possible future features. Don't build them without the 
 
 - **Font:** Fredoka is bundled in `fonts/` (Latin and Latin Extended subsets, `woff2`) under the SIL Open Font License; keep `fonts/OFL.txt` with it. The game loads no outside files.
 
-- **Preview link:** a single HTML file built from `index.html`'s body. `style.css` and `game.js` are copied into the page, the bundled font files in `fonts/` are embedded in the CSS as `data:` URLs (the font preload link is dropped), and the service-worker registration at the end of `game.js` is removed. Previews and the main link each keep their own save.
+- **Preview link:** a single HTML file built by `python3 tools/build-preview.py OUTPUT.html [--title NAME]` from `index.html`. `style.css` and `game.js` are copied into the page, the bundled font files in `fonts/` are embedded in the CSS as `data:` URLs (the font preload link is dropped), and the service-worker registration at the end of `game.js` is removed. Previews and the main link each keep their own save.
 - **Service worker:** `sw.js` serves cached files and refreshes them in the background. Change its cache name (currently `pc-tycoon-v18`) when shipping changed files, so the installed app picks them up.
 
 ## Where things are
+
+- **README.md** is the player-facing guide. When it and this file disagree, trust this file and the code.
 
 - **Branches:** work happens on `claude/amazing-cerf-3ne0f7`. `main` matches the main game link and is only updated when the owner approves.
 - **Preview (current version):** https://claude.ai/artifact/VCpMSXLkPFAvrSx7KqK6fn
